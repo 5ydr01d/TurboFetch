@@ -427,7 +427,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun EmptyState(title: String, message: String, action: String, onAction: () -> Unit) {
-        Box(Modifier.fillMaxWidth().weight(1f, fill = false).padding(vertical = 26.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxWidth().padding(vertical = 26.dp), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.size(64.dp)) {
                     Box(contentAlignment = Alignment.Center) {
@@ -529,6 +529,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @Composable
     private fun statusColor(status: String): androidx.compose.ui.graphics.Color = when (status) {
         "Complete" -> androidx.compose.ui.graphics.Color(0xFF16845B)
         "Failed", "Record unavailable" -> MaterialTheme.colorScheme.error
@@ -713,7 +714,7 @@ private fun searchMatches(row: DownloadRow, query: String): Boolean =
     query.isBlank() || row.title.contains(query, ignoreCase = true) || row.url.contains(query, ignoreCase = true)
 
 private fun sanitizeFileName(input: String): String =
-    input.replace(Regex("[\\\\/:*?""<>|]"), "_")
+    input.replace(Regex("[\\\\/:*?\\"<>|]"), "_")
         .replace(Regex("[\\p{Cntrl}]"), "_")
         .trim()
         .take(150)
