@@ -542,17 +542,17 @@ class MainActivity : ComponentActivity() {
                             )
                             if (!row.isComplete) Text("${row.percent}%", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                         }
-                        if (row.custom && row.status == "Downloading") {
-                            val etaSeconds = if (row.speed > 0L && row.total > row.downloaded) (row.total - row.downloaded) / row.speed else -1L
-                            Text(
-                                "${if (row.speed > 0L) "${formatBytes(row.speed)}/s" else "Calculating speed…"} · ${if (etaSeconds >= 0L) formatEta(etaSeconds) else "ETA —"}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    } else if (row.isActive) {
+                    } else if (row.isActive || row.status == "Paused") {
                         Text("${formatBytes(row.downloaded)} downloaded", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                    if (row.custom && row.status == "Downloading") {
+                        val etaSeconds = if (row.speed > 0L && row.total > row.downloaded) (row.total - row.downloaded) / row.speed else -1L
+                        Text(
+                            "${if (row.speed > 0L) "${formatBytes(row.speed)}/s" else "Calculating speed…"} · ${if (etaSeconds >= 0L) formatEta(etaSeconds) else "ETA —"}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
                 if (row.reason.isNotBlank()) {
