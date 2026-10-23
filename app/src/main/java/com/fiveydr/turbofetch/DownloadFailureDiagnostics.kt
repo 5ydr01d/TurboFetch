@@ -28,7 +28,7 @@ internal object DownloadFailureDiagnostics {
         if (certificateFailure) {
             return Details(
                 category = "TLS / certificate",
-                message = "Android could not verify this server's TLS certificate chain. TurboFetch keeps certificate checks enabled and will not bypass an untrusted certificate. Check the phone's date/time and retry; if only this host fails, its HTTPS certificate chain or download endpoint needs fixing.",
+                message = "Android could not build a trusted certificate chain for this download. TurboFetch will not bypass certificate validation. A URL can work in Chrome if the browser has cached or can obtain a missing intermediate certificate while Android's app connection cannot. Check the phone's date/time; if Chrome still works and TurboFetch alone fails, the host/CDN should serve its complete certificate chain or provide a valid direct HTTPS download endpoint. This cannot be safely fixed by disabling TLS checks.",
                 technicalDetails = technical,
             )
         }
