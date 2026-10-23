@@ -1,6 +1,20 @@
 package com.fiveydr.turbofetch
 
 import android.app.DownloadManager
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+import android.content.ClipData
+import android.content.ClipboardManager
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.security.MessageDigest
+import java.text.DateFormat
+import java.util.Calendar
+import java.util.Locale
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -115,11 +129,31 @@ class MainActivity : ComponentActivity() {
     private val STORAGE_PERMISSION_REQUEST = 8107
     private lateinit var downloadManager: DownloadManager
     private val preferences by lazy { getSharedPreferences("turbofetch", Context.MODE_PRIVATE) }
+    private lateinit var toolImportLauncher: ActivityResultLauncher<Array<String>>
+    private lateinit var toolExportLauncher: ActivityResultLauncher<String>
+    private lateinit var toolChecksumLauncher: ActivityResultLauncher<Array<String>>
+    private var pendingToolExport: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         downloadManager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+        toolImportLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) runCatching {
+                contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+            }.onSuccess { text -> if (!text.isNullOrBlank()) queueToolText(text, "Imported links") else Toast.makeText(this, "File is empty or unreadable", Toast.LENGTH_SHORT).show() }
+                .onFailure { Toast.makeText(this, "Could not read selected file", Toast.LENGTH_SHORT).show() }
+        }
+        toolExportLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+            if (uri != null) runCatching {
+                contentResolver.openOutputStream(uri, "w")?.bufferedWriter(Charsets.UTF_8)?.use { it.write(pendingToolExport) }
+                    ?: error("Could not open output file")
+            }.onSuccess { Toast.makeText(this, "Exported download URLs", Toast.LENGTH_SHORT).show() }
+                .onFailure { Toast.makeText(this, "Export failed: ${it.message}", Toast.LENGTH_SHORT).show() }
+        }
+        toolChecksumLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) calculateToolChecksums(uri)
+        }
         val sharedText = when (intent?.action) {
             Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
             Intent.ACTION_PROCESS_TEXT -> intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
@@ -470,15 +504,7 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
-                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Advanced tools", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                Text("Batch links, scheduled downloads, speed limits, proxy configuration and file checksums.", style = MaterialTheme.typography.bodyMedium)
-                                Button(onClick = { startActivity(Intent(this@MainActivity, AdvancedToolsActivity::class.java)) }, modifier = Modifier.fillMaxWidth()) {
-                                    Text("Open advanced tools")
-                                }
-                            }
-                        }
+                        AdvancedToolsSettingsSection()
                         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Privacy by design", style = MaterialTheme.typography.titleMedium)
@@ -491,6 +517,222 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    @Composable
+    private fun AdvancedToolsSettingsSection() {
+        var directUrl by remember { mutableStateOf(preferences.getString("last_tool_url", "").orEmpty()) }
+        var batchText by remember { mutableStateOf("") }
+        var speedKb by remember { mutableStateOf((preferences.getLong("speed_limit_bytes_per_second", 0L) / 1024L).toString()) }
+        var partsText by remember { mutableStateOf(preferences.getInt("segments_per_download", 4).toString()) }
+        var concurrencyText by remember { mutableStateOf(preferences.getInt("max_concurrent_downloads", 3).toString()) }
+        var proxyHost by remember { mutableStateOf(preferences.getString("proxy_host", "").orEmpty()) }
+        var proxyPort by remember { mutableStateOf(preferences.getInt("proxy_port", 0).takeIf { it > 0 }?.toString().orEmpty()) }
+        var wifiOnly by remember { mutableStateOf(preferences.getBoolean("wifi_only", false)) }
+        var userAgent by remember { mutableStateOf("") }
+        var referer by remember { mutableStateOf("") }
+        var cookie by remember { mutableStateOf("") }
+
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionHeader("Advanced tools", "All tools are available here — no separate screen")
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Add and batch links", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(value = directUrl, onValueChange = { directUrl = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Direct URL (HTTP/HTTPS)") })
+                    Button(onClick = { queueToolText(directUrl, "Added manually") }, modifier = Modifier.fillMaxWidth()) { Text("Queue URL") }
+                    OutlinedTextField(value = batchText, onValueChange = { batchText = it }, modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 7, label = { Text("Paste multiple URLs or a link list") })
+                    Button(onClick = { queueToolText(batchText, "Batch download") }, modifier = Modifier.fillMaxWidth()) { Text("Queue all links in text") }
+                    OutlinedButton(onClick = { toolImportLauncher.launch(arrayOf("text/plain", "text/*", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) { Text("Import links from a text file") }
+                    OutlinedButton(onClick = {
+                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = clipboard.primaryClip
+                        val copied = if (clip != null && clip.itemCount > 0) clip.getItemAt(0).coerceToText(this@MainActivity).toString() else ""
+                        if (copied.isBlank()) Toast.makeText(this@MainActivity, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                        else { batchText = copied; queueToolText(copied, "Clipboard import") }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Import links from clipboard") }
+                    OutlinedButton(onClick = {
+                        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+                        pendingToolExport = (0 until saved.length()).mapNotNull { saved.optJSONObject(it)?.optString("url") }
+                            .filter { DownloadLinkTools.isHttpUrl(it) }.distinct().joinToString("\n", postfix = if (saved.length() > 0) "\n" else "")
+                        if (pendingToolExport.isBlank()) Toast.makeText(this@MainActivity, "There are no download URLs to export", Toast.LENGTH_SHORT).show()
+                        else toolExportLauncher.launch("turbofetch-links.txt")
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Export download URLs") }
+                }
+            }
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Queue controls", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    OutlinedButton(onClick = { controlAllToolDownloads(resume = false) }, modifier = Modifier.fillMaxWidth()) { Text("Pause all active downloads") }
+                    OutlinedButton(onClick = { controlAllToolDownloads(resume = true) }, modifier = Modifier.fillMaxWidth()) { Text("Resume paused / retry failed downloads") }
+                    OutlinedButton(onClick = { clearToolCompletedHistory() }, modifier = Modifier.fillMaxWidth()) { Text("Clear completed history (files stay saved)") }
+                }
+            }
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Download scheduler", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Schedule the URL above for a future date and time.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = { scheduleToolUrl(directUrl) }, modifier = Modifier.fillMaxWidth()) { Text("Schedule this URL…") }
+                }
+            }
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    Text("Transfer settings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(value = speedKb, onValueChange = { speedKb = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Global speed limit (KB/s; 0 = unlimited)") })
+                    OutlinedTextField(value = partsText, onValueChange = { partsText = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Parallel parts per large file (2–16)") })
+                    OutlinedTextField(value = concurrencyText, onValueChange = { concurrencyText = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Simultaneous downloads (1–30)") })
+                    OutlinedTextField(value = proxyHost, onValueChange = { proxyHost = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("HTTP proxy host (blank = direct)") })
+                    OutlinedTextField(value = proxyPort, onValueChange = { proxyPort = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("HTTP proxy port (blank/0 = direct)") })
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Download only on Wi-Fi", modifier = Modifier.weight(1f))
+                        Switch(checked = wifiOnly, onCheckedChange = { wifiOnly = it })
+                    }
+                    Button(onClick = {
+                        val host = proxyHost.trim()
+                        val port = proxyPort.toIntOrNull() ?: 0
+                        if (host.isNotBlank() && port !in 1..65535) {
+                            Toast.makeText(this@MainActivity, "Enter a proxy port from 1 to 65535", Toast.LENGTH_SHORT).show()
+                        } else {
+                            val speed = (speedKb.toLongOrNull() ?: 0L).coerceAtLeast(0L)
+                            val parts = (partsText.toIntOrNull() ?: 4).coerceIn(2, 16)
+                            val concurrent = (concurrencyText.toIntOrNull() ?: 3).coerceIn(1, 30)
+                            preferences.edit().putLong("speed_limit_bytes_per_second", speed * 1024L)
+                                .putInt("segments_per_download", parts).putInt("max_concurrent_downloads", concurrent)
+                                .putString("proxy_host", host).putInt("proxy_port", if (host.isBlank()) 0 else port)
+                                .putBoolean("wifi_only", wifiOnly).apply()
+                            DownloadRuntimeOptions.refresh(this@MainActivity)
+                            CustomDownloadService.start(this@MainActivity)
+                            pumpQueue()
+                            Toast.makeText(this@MainActivity, "Transfer settings saved", Toast.LENGTH_SHORT).show()
+                        }
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Save transfer settings") }
+                    Text("Parallel parts require server byte-range support and a stable validator. Proxy and Wi-Fi-only options affect TurboFetch downloads.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Request headers", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Optional headers apply to new downloads queued from these tools. Cookies are stored locally; avoid shared devices.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(value = userAgent, onValueChange = { userAgent = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("User-Agent (optional)") })
+                    OutlinedTextField(value = referer, onValueChange = { referer = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Referer (optional)") })
+                    OutlinedTextField(value = cookie, onValueChange = { cookie = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Cookie (optional)") })
+                    Text("These fields apply only to downloads queued from this section.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = {
+                        preferences.edit().putString("tool_user_agent", userAgent).putString("tool_referer", referer).putString("tool_cookie", cookie).apply()
+                        Toast.makeText(this@MainActivity, "Request headers saved for this session", Toast.LENGTH_SHORT).show()
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Save request headers") }
+                }
+            }
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("File integrity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Button(onClick = { toolChecksumLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Calculate MD5 and SHA-256 for a file…") }
+                    Text("Checksums help confirm a file has not changed; they do not prove that a file is safe.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+
+    private fun queueToolText(text: String, description: String) {
+        val urls = DownloadLinkTools.extractUrls(text)
+        if (urls.isEmpty()) { Toast.makeText(this, "No valid HTTP/HTTPS links found", Toast.LENGTH_SHORT).show(); return }
+        val currentRows = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+        val used = mutableSetOf<String>()
+        for (i in 0 until currentRows.length()) used.add(currentRows.optJSONObject(i)?.optString("title").orEmpty().lowercase(Locale.ROOT))
+        val headers = linkedMapOf<String, String>()
+        preferences.getString("tool_user_agent", "").orEmpty().takeIf { it.isNotBlank() }?.let { headers["User-Agent"] = it.trim() }
+        preferences.getString("tool_referer", "").orEmpty().takeIf { it.isNotBlank() }?.let { headers["Referer"] = it.trim() }
+        preferences.getString("tool_cookie", "").orEmpty().takeIf { it.isNotBlank() }?.let { headers["Cookie"] = it.trim() }
+        urls.forEach { url ->
+            var title = DownloadLinkTools.fileNameFromUrl(url)
+            if (title.lowercase(Locale.ROOT) in used) {
+                val dot = title.lastIndexOf('.')
+                val stem = if (dot > 0) title.substring(0, dot) else title
+                val ext = if (dot > 0) title.substring(dot) else ""
+                var n = 1
+                while ("${stem} ($n)$ext".lowercase(Locale.ROOT) in used) n++
+                title = "${stem} ($n)$ext"
+            }
+            used.add(title.lowercase(Locale.ROOT))
+            DownloadQueueScheduler.add(this, url, title, description, headers)
+            preferences.edit().putString("last_tool_url", url).apply()
+        }
+        CustomDownloadService.start(this)
+        Toast.makeText(this, "Added ${urls.size} link${if (urls.size == 1) "" else "s"} to the queue", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun controlAllToolDownloads(resume: Boolean) {
+        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+        val ids = mutableListOf<Long>()
+        for (i in 0 until saved.length()) {
+            val item = saved.optJSONObject(i) ?: continue
+            if (!item.optBoolean("custom", false)) continue
+            val phase = item.optString("phase")
+            if (resume && (phase == CustomDownloadService.PHASE_PAUSED || phase == CustomDownloadService.PHASE_FAILED)) {
+                item.put("phase", CustomDownloadService.PHASE_WAITING).put("reason", "")
+                ids.add(item.optLong("id"))
+            } else if (!resume && (phase == CustomDownloadService.PHASE_DOWNLOADING || phase == CustomDownloadService.PHASE_WAITING)) ids.add(item.optLong("id"))
+        }
+        preferences.edit().putString("downloads", saved.toString()).apply()
+        ids.forEach { CustomDownloadService.start(this, if (resume) CustomDownloadService.ACTION_RESUME else CustomDownloadService.ACTION_PAUSE, it) }
+        CustomDownloadService.start(this)
+        Toast.makeText(this, if (resume) "Resume/retry requested for ${ids.size} downloads" else "Pause requested for ${ids.size} downloads", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun clearToolCompletedHistory() {
+        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+        val keep = JSONArray()
+        var removed = 0
+        for (i in 0 until saved.length()) {
+            val item = saved.optJSONObject(i) ?: continue
+            if (item.optString("phase") == CustomDownloadService.PHASE_COMPLETE || item.optString("phase") == "complete") removed++ else keep.put(item)
+        }
+        preferences.edit().putString("downloads", keep.toString()).apply()
+        Toast.makeText(this, "Removed $removed completed history entries. Downloaded files were not deleted.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun scheduleToolUrl(input: String) {
+        val url = input.trim()
+        if (!DownloadLinkTools.isHttpUrl(url)) { Toast.makeText(this, "Enter a valid URL in the Direct URL field first", Toast.LENGTH_SHORT).show(); return }
+        val now = Calendar.getInstance()
+        DatePickerDialog(this, { _, year, month, day ->
+            val date = Calendar.getInstance().apply { set(Calendar.YEAR, year); set(Calendar.MONTH, month); set(Calendar.DAY_OF_MONTH, day) }
+            TimePickerDialog(this, { _, hour, minute ->
+                date.set(Calendar.HOUR_OF_DAY, hour); date.set(Calendar.MINUTE, minute); date.set(Calendar.SECOND, 0); date.set(Calendar.MILLISECOND, 0)
+                runCatching { DownloadScheduleManager.schedule(this, url, DownloadLinkTools.fileNameFromUrl(url), date.timeInMillis) }
+                    .onSuccess { Toast.makeText(this, "Scheduled for ${DateFormat.getDateTimeInstance().format(date.time)}", Toast.LENGTH_LONG).show() }
+                    .onFailure { Toast.makeText(this, it.message ?: "Could not schedule download", Toast.LENGTH_SHORT).show() }
+            }, now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), true).show()
+        }, now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH)).apply { datePicker.minDate = now.timeInMillis }.show()
+    }
+
+    private fun calculateToolChecksums(uri: Uri) {
+        Toast.makeText(this, "Calculating checksums…", Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val md5 = MessageDigest.getInstance("MD5")
+                    val sha = MessageDigest.getInstance("SHA-256")
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        val buffer = ByteArray(128 * 1024)
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            if (count == 0) continue
+                            md5.update(buffer, 0, count); sha.update(buffer, 0, count)
+                        }
+                    } ?: error("Cannot open selected file")
+                    "MD5  ${md5.digest().joinToString("") { "%02x".format(it) }}\nSHA-256  ${sha.digest().joinToString("") { "%02x".format(it) }}"
+                }
+            }
+            result.onSuccess { value ->
+                android.app.AlertDialog.Builder(this@MainActivity).setTitle("File checksums").setMessage(value)
+                    .setPositiveButton("Copy") { _, _ ->
+                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("File checksums", value))
+                        Toast.makeText(this@MainActivity, "Checksums copied", Toast.LENGTH_SHORT).show()
+                    }.setNegativeButton("Close", null).show()
+            }.onFailure { Toast.makeText(this@MainActivity, "Checksum failed: ${it.message}", Toast.LENGTH_SHORT).show() }
         }
     }
 
