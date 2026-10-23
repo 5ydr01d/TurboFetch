@@ -106,6 +106,8 @@ private enum class DownloadFilter(val label: String) {
 }
 
 class MainActivity : ComponentActivity() {
+    private var pendingUrlAfterStoragePermission: String? = null
+    private val STORAGE_PERMISSION_REQUEST = 8107
     private lateinit var downloadManager: DownloadManager
     private val preferences by lazy { getSharedPreferences("turbofetch", Context.MODE_PRIVATE) }
 
@@ -586,11 +588,30 @@ class MainActivity : ComponentActivity() {
         else -> MaterialTheme.colorScheme.primary
     }
 
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != STORAGE_PERMISSION_REQUEST) return
+        val pending = pendingUrlAfterStoragePermission
+        pendingUrlAfterStoragePermission = null
+        if (grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED && !pending.isNullOrBlank()) {
+            enqueueDownload(pending, loadRows()) { }
+        } else if (pending != null) {
+            Toast.makeText(this, "Storage permission is needed to publish downloads on this Android version", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun enqueueDownload(input: String, existing: List<DownloadRow>, onSuccess: () -> Unit) {
         val cleanUrl = input.trim()
         val uri = runCatching { Uri.parse(cleanUrl) }.getOrNull()
         if ((uri?.scheme != "https" && uri?.scheme != "http") || uri.host.isNullOrBlank()) {
             Toast.makeText(this, "Enter a valid direct HTTP or HTTPS URL", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q &&
+            checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingUrlAfterStoragePermission = cleanUrl
+            requestPermissions(arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE), STORAGE_PERMISSION_REQUEST)
             return
         }
         try {
