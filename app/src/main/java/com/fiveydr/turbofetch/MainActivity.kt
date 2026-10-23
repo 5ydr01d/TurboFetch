@@ -2,6 +2,7 @@ package com.fiveydr.turbofetch
 
 import android.app.DownloadManager
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -110,8 +111,7 @@ class MainActivity : ComponentActivity() {
                                                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                                                 .setAllowedOverMetered(true)
                                                 .setAllowedOverRoaming(false)
-                                                .setDestinationInExternalFilesDir(
-                                                    this@MainActivity,
+                                                .setDestinationInExternalPublicDir(
                                                     Environment.DIRECTORY_DOWNLOADS,
                                                     fileNameFrom(uri)
                                                 )
@@ -176,6 +176,9 @@ class MainActivity : ComponentActivity() {
                                                 Text(row.reason, style = MaterialTheme.typography.bodySmall)
                                             }
                                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                if (row.status == "Complete") {
+                                                    Button(onClick = { openDownloadedFile(row.id) }) { Text("Open") }
+                                                }
                                                 if (row.status == "Failed" || row.status == "Cancelled") {
                                                     Button(onClick = {
                                                         retry(row.url, row.title)
@@ -256,7 +259,8 @@ class MainActivity : ComponentActivity() {
                     ) "Reason code: $reasonValue" else ""
                     result.add(DownloadRow(id, title, url, status, downloaded, total, reason))
                 } else {
-                    result.add(DownloadRow(id, title, url, "Cancelled", 0, 0))
+                    // Keep history even if Android has purged the DownloadManager record.
+                    result.add(DownloadRow(id, title, url, "Record unavailable", 0, 0))
                 }
             }
         }
@@ -272,12 +276,30 @@ class MainActivity : ComponentActivity() {
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(false)
-                .setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, title)
+                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, title)
             val newId = downloadManager.enqueue(request)
             saveId(newId, url, title)
             Toast.makeText(this, "Retry queued", Toast.LENGTH_SHORT).show()
         } catch (error: Exception) {
             Toast.makeText(this, "Retry failed: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun openDownloadedFile(id: Long) {
+        try {
+            val uri = downloadManager.getUriForDownloadedFile(id)
+            if (uri == null) {
+                Toast.makeText(this, "Downloaded file could not be located", Toast.LENGTH_LONG).show()
+                return
+            }
+            val mimeType = contentResolver.getType(uri) ?: "*/*"
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mimeType)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(intent)
+        } catch (error: Exception) {
+            Toast.makeText(this, "No app can open this file, or it is unavailable", Toast.LENGTH_LONG).show()
         }
     }
 
