@@ -71,19 +71,22 @@ class ResumableHttpEngineTest {
             val rangeHeader = headers.lineSequence().firstOrNull { it.startsWith("Range:", true) }
                 ?.substringAfter(":")?.trim()
             sawRange = rangeHeader
-            val requestedStart = if (!ignoreRange.get()) {
-                rangeHeader?.removePrefix("bytes=")?.removeSuffix("-")?.toIntOrNull()
+            val range = if (!ignoreRange.get()) {
+                Regex("^bytes=(\\d+)-(\\d*)$").find(rangeHeader.orEmpty())
             } else null
+            val requestedStart = range?.groupValues?.get(1)?.toIntOrNull()
+            val requestedEnd = range?.groupValues?.get(2)?.takeIf { it.isNotBlank() }?.toIntOrNull()
             val start = requestedStart?.takeIf { it in 0 until payload.size } ?: 0
-            val partial = requestedStart != null && start > 0
-            val bodyLength = payload.size - start
+            val endByte = requestedEnd?.coerceAtMost(payload.size - 1)?.takeIf { it >= start } ?: (payload.size - 1)
+            val partial = range != null && requestedStart != null && requestedStart < payload.size
+            val bodyLength = endByte - start + 1
             val status = if (partial) "206 Partial Content" else "200 OK"
             val responseHeaders = buildString {
-                append("HTTP/1.1 $status\r\n")
-                append("Content-Length: $bodyLength\r\n")
-                append("ETag: \"test-etag\"\r\n")
-                if (partial) append("Content-Range: bytes $start-${payload.size - 1}/${payload.size}\r\n")
-                append("Connection: close\r\n\r\n")
+                append("HTTP/1.1 $status\\r\\n")
+                append("Content-Length: $bodyLength\\r\\n")
+                append("ETag: \\"test-etag\\"\\r\\n")
+                if (partial) append("Content-Range: bytes $start-$endByte/${payload.size}\\r\\n")
+                append("Connection: close\\r\\n\\r\\n")
             }
             client.getOutputStream().apply {
                 write(responseHeaders.toByteArray(StandardCharsets.ISO_8859_1))
@@ -129,6 +132,40 @@ class ResumableHttpEngineTest {
         assertTrue(sawRange != null)
         assertTrue(!result.resumed)
         assertArrayEquals(payload, destination.readBytes())
+    }
+
+    @Test
+    fun segmentedDownloadAssemblesAllRanges() {
+        val destination = File(root, "segmented.bin")
+        val result = AdaptiveDownloadEngine(segmentCount = 3, minimumSegmentedBytes = 1L)
+            .download(url(), destination)
+
+        assertEquals(payload.size.toLong(), result.bytes)
+        assertArrayEquals(payload, destination.readBytes())
+    }
+
+    @Test
+    fun segmentedPausePreservesPartsAndResumeCompletesFile() {
+        val destination = File(root, "segmented-resume.bin")
+        val control = ResumableHttpEngine.Control()
+        var paused = false
+        try {
+            AdaptiveDownloadEngine(segmentCount = 3, minimumSegmentedBytes = 1L)
+                .download(url(), destination, control) { progress ->
+                    if (progress.transferredBytes >= 100_000L) control.pause()
+                }
+        } catch (_: ResumableHttpEngine.PausedException) {
+            paused = true
+        }
+        assertTrue("transfer should pause", paused)
+        assertTrue(File(root, "segmented-resume.bin.segments.properties").isFile)
+
+        val result = AdaptiveDownloadEngine(segmentCount = 3, minimumSegmentedBytes = 1L)
+            .download(url(), destination, ResumableHttpEngine.Control())
+
+        assertEquals(payload.size.toLong(), result.bytes)
+        assertArrayEquals(payload, destination.readBytes())
+        assertTrue(!File(root, "segmented-resume.bin.segments.properties").exists())
     }
 
     private fun url() = "http://127.0.0.1:${server.localPort}/file"
