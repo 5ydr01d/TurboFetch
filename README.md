@@ -18,7 +18,7 @@ TurboFetch is an ad-free, privacy-first Android download manager built with Kotl
 - Filename sanitization and collision avoidance against tracked history.
 - Download history metadata and UI preferences are stored locally.
 - No advertising SDKs or analytics SDKs are included.
-- CI runs unit tests and assembles a debug APK on pushes and pull requests to \`main\`.
+- CI runs unit tests and assembles a debug APK on pushes and pull requests to `main`. APK artifacts published from `main` use a persistent signing key configured through GitHub Actions secrets; see [the signing setup guide](docs/CI_DEBUG_SIGNING.md).
 
 Downloads are saved to the public Downloads directory. The current implementation supports direct HTTP/HTTPS file URLs and relies on Android's DownloadManager for the actual transfer. The app-managed concurrency limit controls how many entries TurboFetch submits to DownloadManager at once; lowering the limit does not interrupt transfers already running. Android remains responsible for retries and transfer behavior. Explicit pause/resume, segmented/multi-connection downloads, a built-in browser, torrent support, and media extraction are not implemented yet. As with any Android broadcast-based background behavior, the completion-triggered queue advance still needs real-device validation across Android versions and OEM battery-management settings.
 
@@ -26,12 +26,12 @@ Downloads are saved to the public Downloads directory. The current implementatio
 
 The GitHub Actions workflow uses JDK 17 and Gradle 8.9:
 
-\`\`\`sh
+```sh
 gradle --no-daemon testDebugUnitTest
 gradle --no-daemon assembleDebug
-\`\`\`
+```
 
-After a successful build, the workflow uploads \`TurboFetch-debug-apk\` as an artifact.
+After a successful main-branch build, the workflow uploads `TurboFetch-debug-apk` as an artifact. Pull-request builds run validation but do not publish an APK.
 
 ## Roadmap
 
