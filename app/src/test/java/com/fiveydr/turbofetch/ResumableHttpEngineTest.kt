@@ -23,6 +23,7 @@ class ResumableHttpEngineTest {
     private lateinit var payload: ByteArray
     @Volatile private var sawRange: String? = null
     private val ignoreRange = AtomicBoolean(false)
+    private val ignoreNonProbeRanges = AtomicBoolean(false)
     @Volatile private var running = true
 
     @Before
@@ -71,9 +72,12 @@ class ResumableHttpEngineTest {
             val rangeHeader = headers.lineSequence().firstOrNull { it.startsWith("Range:", true) }
                 ?.substringAfter(":")?.trim()
             sawRange = rangeHeader
-            val range = if (!ignoreRange.get()) {
-                Regex("^bytes=(\\d+)-(\\d*)$").find(rangeHeader.orEmpty())
-            } else null
+            val parsedRange = Regex("^bytes=(\\d+)-(\\d*)$").find(rangeHeader.orEmpty())
+            val requestedRangeStart = parsedRange?.groupValues?.get(1)?.toIntOrNull()
+            val range = if (
+                !ignoreRange.get() &&
+                !(ignoreNonProbeRanges.get() && requestedRangeStart != 0)
+            ) parsedRange else null
             val requestedStart = range?.groupValues?.get(1)?.toIntOrNull()
             val requestedEnd = range?.groupValues?.get(2)?.takeIf { it.isNotBlank() }?.toIntOrNull()
             val start = requestedStart?.takeIf { it in 0 until payload.size } ?: 0
@@ -142,6 +146,20 @@ class ResumableHttpEngineTest {
 
         assertEquals(payload.size.toLong(), result.bytes)
         assertArrayEquals(payload, destination.readBytes())
+    }
+
+    @Test
+    fun fallsBackToSingleStreamWhenServerStopsHonoringSegmentRanges() {
+        val destination = File(root, "range-fallback.bin")
+        // The initial 0-0 probe succeeds, but subsequent non-zero ranges get a full 200 response.
+        ignoreNonProbeRanges.set(true)
+
+        val result = AdaptiveDownloadEngine(segmentCount = 3, minimumSegmentedBytes = 1L)
+            .download(url(), destination)
+
+        assertEquals(payload.size.toLong(), result.bytes)
+        assertArrayEquals(payload, destination.readBytes())
+        assertTrue(!File(root, "range-fallback.bin.segments.properties").exists())
     }
 
     @Test
