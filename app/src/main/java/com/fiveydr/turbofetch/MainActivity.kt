@@ -760,17 +760,7 @@ class MainActivity : ComponentActivity() {
 
     private fun retry(row: DownloadRow, existing: List<DownloadRow>, refresh: () -> Unit) {
         if (row.custom) {
-            val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
-            for (i in 0 until saved.length()) {
-                val item = saved.optJSONObject(i) ?: continue
-                if (item.optLong("id") == row.id) {
-                    item.put("phase", CustomDownloadService.PHASE_WAITING)
-                        .put("reason", "")
-                        .put("custom", true)
-                    break
-                }
-            }
-            preferences.edit().putString("downloads", saved.toString()).apply()
+            DownloadQueueScheduler.requeue(this, row.id)
             CustomDownloadService.start(this)
             Toast.makeText(this, "Retry queued · saved partial data will be checked", Toast.LENGTH_SHORT).show()
             refresh()
