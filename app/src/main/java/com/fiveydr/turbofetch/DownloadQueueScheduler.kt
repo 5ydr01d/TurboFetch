@@ -16,6 +16,38 @@ import java.io.File
  */
 internal object DownloadQueueScheduler {
     @Synchronized
+    fun add(context: Context, url: String, title: String, description: String) {
+        val preferences = context.applicationContext.getSharedPreferences("turbofetch", Context.MODE_PRIVATE)
+        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+        val usedIds = (0 until saved.length()).mapNotNull { saved.optJSONObject(it)?.optLong("id") }.toSet()
+        var localId = -System.currentTimeMillis().coerceAtLeast(1L)
+        while (localId in usedIds) localId--
+        val createdAt = System.currentTimeMillis()
+        saved.put(
+            JSONObject()
+                .put("id", localId)
+                .put("url", url)
+                .put("title", title)
+                .put("phase", "waiting")
+                .put("description", description)
+                .put("createdAt", createdAt)
+        )
+        preferences.edit().putString("downloads", saved.toString()).apply()
+    }
+
+    @Synchronized
+    fun remove(context: Context, id: Long) {
+        val preferences = context.applicationContext.getSharedPreferences("turbofetch", Context.MODE_PRIVATE)
+        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+        val updated = JSONArray()
+        for (i in 0 until saved.length()) {
+            val item = saved.optJSONObject(i) ?: continue
+            if (item.optLong("id") != id) updated.put(item)
+        }
+        preferences.edit().putString("downloads", updated.toString()).apply()
+    }
+
+    @Synchronized
     fun pump(context: Context) {
         val appContext = context.applicationContext
         val preferences = appContext.getSharedPreferences("turbofetch", Context.MODE_PRIVATE)
