@@ -611,7 +611,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun pumpQueue() {
-        DownloadQueueScheduler.pump(this)
+        CustomDownloadService.start(this)
     }
 
     private fun removeId(id: Long) {
