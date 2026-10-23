@@ -55,51 +55,83 @@ class TurboBrowserActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(0xFFF7F7FA.toInt())
         }
-        val toolbar = LinearLayout(this).apply {
+
+        // Compact browser action strip at the top; it stays separate from the page.
+        val actionScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        val controls = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), dp(6), dp(8), dp(4))
+            setPadding(dp(4), dp(3), dp(4), dp(3))
         }
-        address = EditText(this).apply {
-            hint = "Search or enter URL"
-            setSingleLine(true)
-            textSize = 14f
-            setSelectAllOnFocus(false)
-        }
-        toolbar.addView(address, LinearLayout.LayoutParams(0, dp(48), 1f))
-        toolbar.addView(makeButton("Go") { currentTab()?.web?.loadUrl(normalizeAddress(address.text.toString())) })
-        toolbar.addView(makeButton("+") { addTab("https://www.google.com", privateMode) })
-        root.addView(toolbar)
-
-        val tabsScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
-        tabStrip = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(4), 0, dp(4), dp(4)) }
-        tabsScroll.addView(tabStrip)
-        root.addView(tabsScroll, LinearLayout.LayoutParams(-1, dp(40)))
-
-        webContainer = FrameLayout(this)
-        root.addView(webContainer, LinearLayout.LayoutParams(-1, 0, 1f))
-
-        val firstBar = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
-        val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         controls.addView(makeButton("‹") { currentTab()?.web?.let { if (it.canGoBack()) it.goBack() } })
         controls.addView(makeButton("›") { currentTab()?.web?.let { if (it.canGoForward()) it.goForward() } })
         controls.addView(makeButton("↻") { currentTab()?.web?.reload() })
+        controls.addView(makeButton("Home") { currentTab()?.web?.loadUrl("https://www.google.com") })
         mediaButton = makeButton("Media 0") { showDetectedLinks() }
         controls.addView(mediaButton)
-        controls.addView(makeButton("Grab links") { capturePageLinks() })
+        controls.addView(makeButton("Grab") { capturePageLinks() })
         controls.addView(makeButton("★") { addBookmark() })
         controls.addView(makeButton("Saved") { showSavedItems("bookmarks", "Bookmarks") })
         controls.addView(makeButton("History") { showSavedItems("browser_history", "History") })
+        controls.addView(makeButton("Find") { findInPage() })
+        controls.addView(makeButton("Share") { sharePage() })
         controls.addView(makeButton("Private") {
             privateMode = !privateMode
             addTab(currentTab()?.web?.url ?: "https://www.google.com", privateMode)
             toast(if (privateMode) "Private tab opened; browsing history is not saved" else "Normal tab opened")
         })
-        firstBar.addView(controls)
-        root.addView(firstBar)
+        actionScroll.addView(controls)
+        root.addView(actionScroll, LinearLayout.LayoutParams(-1, dp(48)))
+
+        // Side-mounted vertical tabs keep tab switching reachable without taking a full row.
+        val browsingArea = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.TOP
+        }
+        val tabsScroll = android.widget.ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        tabStrip = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(3), dp(4), dp(3), dp(4))
+        }
+        tabsScroll.addView(tabStrip, android.widget.ScrollView.LayoutParams(-1, -2))
+        browsingArea.addView(tabsScroll, LinearLayout.LayoutParams(dp(88), 0, 1f))
+
+        webContainer = FrameLayout(this)
+        browsingArea.addView(webContainer, LinearLayout.LayoutParams(0, -1, 1f))
+        root.addView(browsingArea, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        // Address/navigation bar is anchored at the bottom for easier one-handed use.
+        val addressBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(7), dp(5), dp(7), dp(7))
+            setBackgroundColor(0xFFE9EAF0.toInt())
+        }
+        address = EditText(this).apply {
+            hint = "Search or enter URL"
+            setSingleLine(true)
+            textSize = 15f
+            setSelectAllOnFocus(false)
+            setPadding(dp(12), 0, dp(8), 0)
+            setBackgroundColor(0xFFFFFFFF.toInt())
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_GO
+        }
+        addressBar.addView(address, LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+            marginEnd = dp(5)
+        })
+        addressBar.addView(makeButton("Go") { navigateFromAddress() })
+        addressBar.addView(makeButton("+") { addTab("https://www.google.com", privateMode) })
+        root.addView(addressBar, LinearLayout.LayoutParams(-1, -2))
+
         setContentView(root)
         address.setOnEditorActionListener { _, _, _ ->
-            currentTab()?.web?.loadUrl(normalizeAddress(address.text.toString()))
+            navigateFromAddress()
             true
         }
     }
@@ -204,8 +236,9 @@ class TurboBrowserActivity : ComponentActivity() {
         tabStrip.removeAllViews()
         tabs.forEachIndexed { index, tab ->
             val label = (if (tab.incognito) "◐ " else "") + (index + 1).toString() + " · " + tab.title
-            val chip = makeButton(label.take(25)) { showTab(index) }
+            val chip = makeButton(label.take(18)) { showTab(index) }
             chip.alpha = if (index == activeIndex) 1f else 0.65f
+            chip.maxLines = 2
             chip.setOnLongClickListener {
                 closeTab(index)
                 true
@@ -228,6 +261,42 @@ class TurboBrowserActivity : ComponentActivity() {
     }
 
     private fun currentTab(): BrowserTab? = tabs.getOrNull(activeIndex)
+
+    private fun navigateFromAddress() {
+        val target = normalizeAddress(address.text.toString())
+        currentTab()?.web?.loadUrl(target)
+        address.clearFocus()
+    }
+
+    private fun findInPage() {
+        val field = EditText(this).apply {
+            hint = "Find text on this page"
+            singleLine = true
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Find in page")
+            .setView(field)
+            .setPositiveButton("Find") { _, _ ->
+                val query = field.text.toString()
+                if (query.isNotBlank()) currentTab()?.web?.findAllAsync(query)
+            }
+            .setNeutralButton("Clear highlights") { _, _ ->
+                currentTab()?.web?.clearMatches()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun sharePage() {
+        val tab = currentTab() ?: return
+        val url = tab.web.url ?: return
+        val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(android.content.Intent.EXTRA_TEXT, url)
+            putExtra(android.content.Intent.EXTRA_SUBJECT, tab.web.title.orEmpty().ifBlank { url })
+        }
+        startActivity(android.content.Intent.createChooser(share, "Share page"))
+    }
 
     private fun confirmDownload(url: String, proposedTitle: String) {
         if (!DownloadLinkTools.isHttpUrl(url)) return
