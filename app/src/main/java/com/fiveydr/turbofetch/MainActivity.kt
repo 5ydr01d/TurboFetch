@@ -530,9 +530,9 @@ class MainActivity : ComponentActivity() {
         var proxyHost by remember { mutableStateOf(preferences.getString("proxy_host", "").orEmpty()) }
         var proxyPort by remember { mutableStateOf(preferences.getInt("proxy_port", 0).takeIf { it > 0 }?.toString().orEmpty()) }
         var wifiOnly by remember { mutableStateOf(preferences.getBoolean("wifi_only", false)) }
-        var userAgent by remember { mutableStateOf("") }
-        var referer by remember { mutableStateOf("") }
-        var cookie by remember { mutableStateOf("") }
+        var userAgent by remember { mutableStateOf(preferences.getString("tool_user_agent", "").orEmpty()) }
+        var referer by remember { mutableStateOf(preferences.getString("tool_referer", "").orEmpty()) }
+        var cookie by remember { mutableStateOf(preferences.getString("tool_cookie", "").orEmpty()) }
 
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SectionHeader("Advanced tools", "All tools are available here — no separate screen")
