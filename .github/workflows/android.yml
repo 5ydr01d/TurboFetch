@@ -31,9 +31,8 @@ jobs:
       - name: Run unit tests
         run: gradle --no-daemon testDebugUnitTest
 
-      # Pull-request builds (including forks, which cannot access repository
-      # secrets) only validate compilation. Distributable APKs from main must
-      # always use the repository's persistent signing key.
+      # PR builds use Android's temporary debug signing key and publish a
+      # test-only APK artifact. Builds on main use the persistent signing key.
       - name: Configure persistent APK signing
         if: github.event_name != 'pull_request'
         env:
@@ -71,7 +70,16 @@ jobs:
           test -n "$apksigner"
           "$apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Upload debug APK
+      - name: Upload PR test APK
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: TurboFetch-PR-${{ github.event.pull_request.number }}-test-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload signed debug APK
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
