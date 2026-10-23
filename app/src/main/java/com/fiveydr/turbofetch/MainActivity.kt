@@ -82,11 +82,11 @@ private data class DownloadRow(
     val downloaded: Long,
     val total: Long,
     val reason: String = "",
-    val technicalDetails: String = "",
     val createdAt: Long = id,
     val speed: Long = 0L,
     val custom: Boolean = false,
-    val contentUri: String = ""
+    val contentUri: String = "",
+    val technicalDetails: String = ""
 ) {
     val percent: Int
         get() = if (total > 0L) ((downloaded * 100L) / total).toInt().coerceIn(0, 100) else 0
