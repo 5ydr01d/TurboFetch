@@ -189,8 +189,14 @@ class CustomDownloadService : Service() {
         val row = findRow(id)
         val destination = row?.optString("destination").orEmpty()
         if (destination.isNotBlank()) {
+            val base = File(destination)
             File(destination + ".part").delete()
             File(destination + ".part.properties").delete()
+            File(destination + ".segments.properties").delete()
+            base.parentFile?.listFiles()
+                ?.filter { it.name.startsWith(base.name + ".segment-") }
+                ?.forEach { it.delete() }
+            File(base.parentFile, base.name + ".assembling").delete()
         }
         updateRow(id) { it.put("phase", PHASE_CANCELLED).put("reason", "Cancelled") }
         updateNotification()
