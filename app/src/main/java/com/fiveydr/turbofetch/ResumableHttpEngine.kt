@@ -91,10 +91,15 @@ internal class ResumableHttpEngine(
             val code = connection.responseCode
             if (code !in 200..299) throw IOException("Server returned HTTP $code")
 
-            val append = requestResume && code == HttpURLConnection.HTTP_PARTIAL &&
-                parseRangeStart(connection.getHeaderField("Content-Range")) == existing
-            // If Range is ignored, or the server's range does not match our partial length,
-            // restart from byte zero. Never append a full response to an old partial file.
+            val responseRangeStart = parseRangeStart(connection.getHeaderField("Content-Range"))
+            if (code == HttpURLConnection.HTTP_PARTIAL &&
+                (!requestResume || responseRangeStart != existing)
+            ) {
+                throw IOException("Server returned an unexpected byte range; refusing to corrupt the partial file")
+            }
+            // If Range is ignored, HTTP 200 means a complete response: overwrite the partial file.
+            // A 206 response is appended only when its declared start matches the saved length.
+            val append = requestResume && code == HttpURLConnection.HTTP_PARTIAL && responseRangeStart == existing
             val startBytes = if (append) existing else 0L
             val total = parseRangeTotal(connection.getHeaderField("Content-Range"))
                 ?: connection.getHeaderFieldLong("Content-Length", -1L).takeIf { it >= 0L }?.plus(startBytes)
