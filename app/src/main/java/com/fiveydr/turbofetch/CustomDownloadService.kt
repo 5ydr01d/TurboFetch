@@ -150,6 +150,7 @@ class CustomDownloadService : Service() {
             }
         }
         updateNotification()
+        scheduleQueue()
     }
 
     private fun resume(id: Long) {
