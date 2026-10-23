@@ -332,6 +332,7 @@ class MainActivity : ComponentActivity() {
                                         onOpen = { openDownloadedFile(row.id) },
                                         onShare = { shareDownloadedFile(row.id) },
                                         onRetry = { retry(row, rows) { rows = loadRows() } },
+                                        onPauseResume = { controlDownload(row) { rows = loadRows() } },
                                         onDismiss = { dismissOrCancel(row) { rows = loadRows() } }
                                     )
                                 }
@@ -387,7 +388,7 @@ class MainActivity : ComponentActivity() {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Privacy by design", style = MaterialTheme.typography.titleMedium)
                                 Text("No advertising SDKs or analytics SDKs. Download history is stored locally on this device.", style = MaterialTheme.typography.bodyMedium)
-                                Text("The current queue uses Android DownloadManager for transfers. Explicit pause/resume and segmented downloads require a separate engine and are not yet available.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("New downloads use TurboFetch’s custom HTTP engine with pause/resume and partial-file recovery when the source supports safe byte-range requests. Segmented multi-connection downloads are not implemented yet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         Spacer(Modifier.height(8.dp))
