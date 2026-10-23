@@ -155,10 +155,11 @@ class MainActivity : ComponentActivity() {
         }
 
         LaunchedEffect(Unit) {
+            pumpQueue()
             while (true) {
-                pumpQueue()
                 rows = loadRows()
                 loading = false
+                if (rows.any { it.isWaiting }) pumpQueue()
                 delay(if (rows.any { it.isBusy }) 1500L else 5000L)
             }
         }
@@ -606,21 +607,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun addToQueue(url: String, title: String, description: String) {
-        val all = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
-        val usedIds = (0 until all.length()).mapNotNull { all.optJSONObject(it)?.optLong("id") }.toSet()
-        var localId = -System.currentTimeMillis().coerceAtLeast(1L)
-        while (localId in usedIds) localId--
-        val createdAt = System.currentTimeMillis()
-        all.put(
-            JSONObject()
-                .put("id", localId)
-                .put("url", url)
-                .put("title", title)
-                .put("phase", "waiting")
-                .put("description", description)
-                .put("createdAt", createdAt)
-        )
-        preferences.edit().putString("downloads", all.toString()).apply()
+        DownloadQueueScheduler.add(this, url, title, description)
     }
 
     private fun pumpQueue() {
@@ -628,13 +615,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun removeId(id: Long) {
-        val current = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
-        val updated = JSONArray()
-        for (i in 0 until current.length()) {
-            val item = current.optJSONObject(i) ?: continue
-            if (item.optLong("id") != id) updated.put(item)
-        }
-        preferences.edit().putString("downloads", updated.toString()).apply()
+        DownloadQueueScheduler.remove(this, id)
     }
 
     private fun loadRows(): List<DownloadRow> {
