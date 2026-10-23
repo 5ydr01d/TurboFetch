@@ -80,7 +80,10 @@ private data class DownloadRow(
     val downloaded: Long,
     val total: Long,
     val reason: String = "",
-    val createdAt: Long = id
+    val createdAt: Long = id,
+    val speed: Long = 0L,
+    val custom: Boolean = false,
+    val contentUri: String = ""
 ) {
     val percent: Int
         get() = if (total > 0L) ((downloaded * 100L) / total).toInt().coerceIn(0, 100) else 0
@@ -88,7 +91,7 @@ private data class DownloadRow(
     val isWaiting: Boolean get() = status == "Waiting in queue"
     val isBusy: Boolean get() = isActive || isWaiting
     val isComplete: Boolean get() = status == "Complete"
-    val isProblem: Boolean get() = status == "Failed" || status == "Record unavailable"
+    val isProblem: Boolean get() = status == "Failed" || status == "Record unavailable" || status == "Cancelled"
 }
 
 private enum class AppTab(val label: String, val symbol: String) {
@@ -241,6 +244,7 @@ class MainActivity : ComponentActivity() {
                                         onOpen = { openDownloadedFile(row.id) },
                                         onShare = { shareDownloadedFile(row.id) },
                                         onRetry = { retry(row, rows) { rows = loadRows() } },
+                                        onPauseResume = { controlDownload(row) { rows = loadRows() } },
                                         onDismiss = { dismissOrCancel(row) { rows = loadRows() } }
                                     )
                                 }
@@ -293,6 +297,7 @@ class MainActivity : ComponentActivity() {
                                         onOpen = { openDownloadedFile(row.id) },
                                         onShare = { shareDownloadedFile(row.id) },
                                         onRetry = { retry(row, rows) { rows = loadRows() } },
+                                        onPauseResume = { controlDownload(row) { rows = loadRows() } },
                                         onDismiss = { dismissOrCancel(row) { rows = loadRows() } }
                                     )
                                 }
@@ -476,6 +481,7 @@ class MainActivity : ComponentActivity() {
         onOpen: () -> Unit,
         onShare: () -> Unit,
         onRetry: () -> Unit,
+        onPauseResume: () -> Unit,
         onDismiss: () -> Unit
     ) {
         val iconText = when (row.title.substringAfterLast('.', "").lowercase()) {
@@ -520,7 +526,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 }
-                if (row.isActive || row.isComplete) {
+                if (row.isActive || row.isComplete || row.status == "Paused") {
                     if (row.total > 0L) {
                         LinearProgressIndicator(
                             progress = { row.percent / 100f },
@@ -535,6 +541,14 @@ class MainActivity : ComponentActivity() {
                             )
                             if (!row.isComplete) Text("${row.percent}%", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                         }
+                        if (row.custom && row.status == "Downloading") {
+                            val etaSeconds = if (row.speed > 0L && row.total > row.downloaded) (row.total - row.downloaded) / row.speed else -1L
+                            Text(
+                                "${if (row.speed > 0L) "${formatBytes(row.speed)}/s" else "Calculating speed…"} · ${if (etaSeconds >= 0L) formatEta(etaSeconds) else "ETA —"}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     } else if (row.isActive) {
                         Text("${formatBytes(row.downloaded)} downloaded", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -547,10 +561,13 @@ class MainActivity : ComponentActivity() {
                     if (row.isComplete) {
                         Button(onClick = onOpen, modifier = Modifier.weight(1f)) { Text("Open") }
                         OutlinedButton(onClick = onShare, modifier = Modifier.weight(1f)) { Text("Share") }
-                    } else if (row.isProblem || row.status == "Cancelled") {
+                    } else if (row.isProblem) {
                         Button(onClick = onRetry, modifier = Modifier.weight(1f)) { Text("Retry") }
                     } else if (row.isWaiting) {
                         Text("Waiting for a free download slot", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                    }
+                    if (row.custom && (row.status == "Downloading" || row.status == "Paused")) {
+                        OutlinedButton(onClick = onPauseResume) { Text(if (row.status == "Paused") "Resume" else "Pause") }
                     }
                     OutlinedButton(onClick = onDismiss) {
                         Text(if (row.isBusy) "Cancel" else "Dismiss")
@@ -628,6 +645,36 @@ class MainActivity : ComponentActivity() {
             val title = item.optString("title", "Download")
             val phase = item.optString("phase", "managed")
             val createdAt = item.optLong("createdAt", id)
+
+            if (item.optBoolean("custom", false)) {
+                val status = when (phase) {
+                    CustomDownloadService.PHASE_WAITING -> "Waiting in queue"
+                    CustomDownloadService.PHASE_DOWNLOADING -> "Downloading"
+                    CustomDownloadService.PHASE_PAUSED -> "Paused"
+                    CustomDownloadService.PHASE_COMPLETE -> "Complete"
+                    CustomDownloadService.PHASE_FAILED -> "Failed"
+                    CustomDownloadService.PHASE_CANCELLED -> "Cancelled"
+                    else -> "Queued"
+                }
+                val totalBytes = item.optLong("totalBytes", -1L)
+                result.add(
+                    DownloadRow(
+                        id = id,
+                        title = title,
+                        url = url,
+                        status = status,
+                        downloaded = item.optLong("downloadedBytes", 0L).coerceAtLeast(0L),
+                        total = totalBytes.takeIf { it > 0L } ?: 0L,
+                        reason = item.optString("reason", ""),
+                        createdAt = createdAt,
+                        speed = item.optLong("bytesPerSecond", 0L).coerceAtLeast(0L),
+                        custom = true,
+                        contentUri = item.optString("contentUri", "")
+                    )
+                )
+                continue
+            }
+
             if (phase == "waiting") {
                 result.add(DownloadRow(id, title, url, "Waiting in queue", 0, 0, "", createdAt))
                 continue
@@ -667,13 +714,25 @@ class MainActivity : ComponentActivity() {
 
     private fun dismissOrCancel(row: DownloadRow, refresh: () -> Unit) {
         if (row.isBusy) {
-            if (row.id > 0L) downloadManager.remove(row.id)
+            if (row.custom) {
+                CustomDownloadService.start(this, CustomDownloadService.ACTION_CANCEL, row.id)
+            } else if (row.id > 0L) {
+                downloadManager.remove(row.id)
+                removeId(row.id)
+            }
             Toast.makeText(this, "Download cancelled", Toast.LENGTH_SHORT).show()
         } else {
-            Toast.makeText(this, "History entry dismissed; the file is not deleted", Toast.LENGTH_SHORT).show()
+            removeId(row.id)
+            Toast.makeText(this, "History entry dismissed; the downloaded file is not deleted", Toast.LENGTH_SHORT).show()
         }
-        removeId(row.id)
         pumpQueue()
+        refresh()
+    }
+
+    private fun controlDownload(row: DownloadRow, refresh: () -> Unit) {
+        if (!row.custom) return
+        val action = if (row.status == "Paused") CustomDownloadService.ACTION_RESUME else CustomDownloadService.ACTION_PAUSE
+        CustomDownloadService.start(this, action, row.id)
         refresh()
     }
 
@@ -694,9 +753,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun uriForDownload(id: Long): Uri? {
+        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+        for (i in 0 until saved.length()) {
+            val item = saved.optJSONObject(i) ?: continue
+            if (item.optLong("id") != id) continue
+            val stored = item.optString("contentUri", "")
+            if (stored.isNotBlank()) return runCatching { Uri.parse(stored) }.getOrNull()
+            break
+        }
+        return downloadManager.getUriForDownloadedFile(id)
+    }
+
     private fun openDownloadedFile(id: Long) {
         try {
-            val uri = downloadManager.getUriForDownloadedFile(id)
+            val uri = uriForDownload(id)
             if (uri == null) {
                 Toast.makeText(this, "Downloaded file could not be located", Toast.LENGTH_LONG).show()
                 return
@@ -714,7 +785,7 @@ class MainActivity : ComponentActivity() {
 
     private fun shareDownloadedFile(id: Long) {
         try {
-            val uri = downloadManager.getUriForDownloadedFile(id)
+            val uri = uriForDownload(id)
             if (uri == null) {
                 Toast.makeText(this, "Downloaded file could not be located", Toast.LENGTH_LONG).show()
                 return
@@ -729,6 +800,15 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "Could not share this file", Toast.LENGTH_LONG).show()
         }
     }
+}
+
+private fun formatEta(seconds: Long): String {
+    if (seconds < 0L) return "—"
+    if (seconds < 60L) return "${seconds}s"
+    if (seconds < 3600L) return "${seconds / 60}m ${seconds % 60}s"
+    val hours = seconds / 3600
+    val minutes = (seconds % 3600) / 60
+    return "${hours}h ${minutes}m"
 }
 
 private fun searchMatches(row: DownloadRow, query: String): Boolean =
