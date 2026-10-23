@@ -37,7 +37,7 @@ class CustomDownloadService : Service() {
     private val jobs = ConcurrentHashMap<Long, Job>()
     private val controls = ConcurrentHashMap<Long, ResumableHttpEngine.Control>()
     private val lock = DownloadQueueScheduler
-    private val engine by lazy { ResumableHttpEngine() }
+    private val engine by lazy { AdaptiveDownloadEngine(segmentCount = prefs.getInt("segment_count", 4).coerceIn(2, 8)) }
     private val prefs by lazy { getSharedPreferences("turbofetch", Context.MODE_PRIVATE) }
 
     override fun onCreate() {
@@ -141,9 +141,19 @@ class CustomDownloadService : Service() {
                 }
                 throw error
             } catch (error: Exception) {
+                val message = error.message ?: "Download failed"
+                val category = when {
+                    message.contains("HTTP", ignoreCase = true) || message.contains("range", ignoreCase = true) -> "Server response"
+                    message.contains("storage", ignoreCase = true) || message.contains("file", ignoreCase = true) || message.contains("directory", ignoreCase = true) -> "Storage"
+                    message.contains("timeout", ignoreCase = true) || message.contains("connect", ignoreCase = true) || message.contains("network", ignoreCase = true) -> "Network"
+                    else -> "Transfer"
+                }
                 updateRow(id) {
                     it.put("phase", PHASE_FAILED)
-                        .put("reason", error.message ?: "Download failed")
+                        .put("reason", message)
+                        .put("failureType", category)
+                        .put("failedAt", System.currentTimeMillis())
+                        .put("lastError", message.take(500))
                 }
             } finally {
                 jobs.remove(id)
