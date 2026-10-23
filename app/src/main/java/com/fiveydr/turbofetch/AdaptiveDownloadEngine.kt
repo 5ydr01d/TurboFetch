@@ -35,7 +35,7 @@ internal class AdaptiveDownloadEngine(
         val count = minOf(segmentCount, maxOf(2, ((probe.total + minimumSegmentedBytes - 1) / minimumSegmentedBytes).toInt()))
             .coerceAtMost(8)
         val scratch = (0 until count).map { File(destination.parentFile, destination.name + ".segment-" + it) }
-        val completedBytes = AtomicLong(0L)
+        val aggregateBytes = AtomicLong(0L)
         val startedAt = System.nanoTime()
         val executor = Executors.newFixedThreadPool(count)
         try {
@@ -103,7 +103,11 @@ internal class AdaptiveDownloadEngine(
                 .find(connection.getHeaderField("Content-Range").orEmpty()) ?: return null
             val total = range.groupValues[1].toLongOrNull() ?: return null
             if (total <= 0L) return null
-            Probe(total, connection.getHeaderField("ETag"), connection.getHeaderField("Last-Modified"))
+            val etag = connection.getHeaderField("ETag")
+            val lastModified = connection.getHeaderField("Last-Modified")
+            // Without a stable validator, parallel ranges could silently combine different versions.
+            if (etag.isNullOrBlank() && lastModified.isNullOrBlank()) return null
+            Probe(total, etag, lastModified)
         } catch (_: Exception) {
             null
         } finally {
