@@ -1,33 +1,37 @@
 # TurboFetch
 
-An ad-free, privacy-first Android download manager.
+TurboFetch is an ad-free, privacy-first Android download manager. The project is being built as an independent alternative inspired by common download-manager workflows.
 
-## Direction
+## Current MVP
 
-TurboFetch is being built Android-first with Kotlin and Jetpack Compose. The first milestone is a reliable direct HTTP/HTTPS download queue; browser integration, media detection and torrent support are later milestones.
+- Native Android app built with Kotlin and Jetpack Compose.
+- Add direct HTTP/HTTPS download URLs.
+- Queue downloads through Android's system DownloadManager, which can continue work in the background.
+- View queue status, downloaded bytes, progress percentage, and failure/pause reason codes.
+- Cancel active downloads, dismiss tracked entries, and retry failed downloads.
+- No advertising SDKs or analytics SDKs are included.
+- GitHub Actions builds a debug APK on pushes and pull requests to `main`.
 
-## Planned MVP
+Downloads are stored in the app-specific external Downloads directory. This first version handles **direct file URLs**; it is not yet a browser-integrated downloader and does not yet implement segmented/multi-connection downloads, a built-in browser, media sniffing, or torrents. Pause/resume controls are not exposed in this MVP; Android's DownloadManager owns transfer and retry behavior.
 
-- Add direct HTTP/HTTPS URLs
-- Persistent download queue
-- Progress, pause, resume, retry and cancel
-- HTTP Range-based continuation where supported by the server
-- Background downloads with an ongoing notification
-- App-specific download storage
-- No ad SDKs, analytics SDKs, account requirement or tracking endpoint
+## Build
 
-## Development
+The GitHub Actions workflow uses JDK 17 and Gradle 8.9:
 
-Open the project in Android Studio with JDK 17 and the Android SDK installed. The Android Gradle project files and automated build workflow will be added in the next commits.
+```sh
+gradle --no-daemon assembleDebug
+```
 
-## Scope and safety
+The APK is uploaded as the `TurboFetch-debug-apk` workflow artifact after a successful build.
 
-This app is intended for direct links the user is authorized to download. It will not bypass DRM, paywalls, authentication, or site access controls. Resume support depends on server byte-range support; when unavailable, downloads must restart safely.
+## Roadmap
 
-## Privacy
+1. Establish a reliable, tested direct-download MVP.
+2. Add a custom download engine with explicit pause/resume, robust retry, and HTTP Range support when the server supports it.
+3. Improve file naming, duplicate handling, queue controls, and download history.
+4. Explore optional browser integration and media detection.
+5. Evaluate torrent support separately.
 
-No advertising or analytics SDKs are planned. Network requests should only go to URLs the user submits.
+## Privacy and scope
 
-## License
-
-No license has been selected yet.
+TurboFetch currently relies on Android's built-in download service and stores its queue metadata locally in app preferences. No account, ad network, or analytics integration is configured. This is an early development build, not a release-ready or security-audited app.
