@@ -623,77 +623,8 @@ class MainActivity : ComponentActivity() {
         preferences.edit().putString("downloads", all.toString()).apply()
     }
 
-    private fun buildRequest(uri: Uri, title: String, description: String): DownloadManager.Request {
-        val request = DownloadManager.Request(uri)
-            .setTitle(title)
-            .setDescription(description)
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setAllowedOverMetered(true)
-            .setAllowedOverRoaming(false)
-            .setDestinationUri(
-                Uri.fromFile(
-                    File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), title)
-                )
-            )
-        request.allowScanningByMediaScanner()
-        return request
-    }
-
-    private fun countManagedActive(saved: JSONArray): Int {
-        var count = 0
-        for (i in 0 until saved.length()) {
-            val item = saved.optJSONObject(i) ?: continue
-            if (item.optString("phase") == "waiting" || item.optString("phase") == "failed-local") continue
-            val id = item.optLong("id")
-            if (id <= 0L) continue
-            val cursor = downloadManager.query(DownloadManager.Query().setFilterById(id))
-            cursor.use {
-                if (it != null && it.moveToFirst()) {
-                    val status = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-                    if (status == DownloadManager.STATUS_PENDING ||
-                        status == DownloadManager.STATUS_RUNNING ||
-                        status == DownloadManager.STATUS_PAUSED
-                    ) count++
-                }
-            }
-        }
-        return count
-    }
-
     private fun pumpQueue() {
-        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
-        val limit = preferences.getInt("max_concurrent_downloads", 3).coerceIn(1, 5)
-        val managedActive = countManagedActive(saved)
-        val waitingItems = mutableListOf<JSONObject>()
-        for (i in 0 until saved.length()) {
-            val item = saved.optJSONObject(i) ?: continue
-            if (item.optString("phase") == "waiting") waitingItems.add(item)
-        }
-        val idsToStart = selectQueuedIds(waitingItems.map { it.optLong("id") }, managedActive, limit).toSet()
-        var changed = false
-        var activeAfterStart = managedActive
-        for (item in waitingItems) {
-            if (item.optLong("id") !in idsToStart) continue
-            val url = item.optString("url")
-            val uri = runCatching { Uri.parse(url) }.getOrNull()
-            if (uri == null || uri.host.isNullOrBlank() || (uri.scheme != "https" && uri.scheme != "http")) {
-                item.put("phase", "failed-local").put("reason", "Invalid or unsupported URL")
-                changed = true
-                continue
-            }
-            try {
-                val title = item.optString("title", "download.bin")
-                val id = downloadManager.enqueue(buildRequest(uri, title, item.optString("description", "Downloading with TurboFetch")))
-                item.put("id", id).put("phase", "managed").put("reason", "")
-                activeAfterStart++
-                changed = true
-            } catch (error: Exception) {
-                item.put("phase", "failed-local")
-                    .put("reason", "Could not start: ${error.message ?: "unknown error"}")
-                changed = true
-            }
-        }
-        if (changed) preferences.edit().putString("downloads", saved.toString()).apply()
+        DownloadQueueScheduler.pump(this)
     }
 
     private fun removeId(id: Long) {
