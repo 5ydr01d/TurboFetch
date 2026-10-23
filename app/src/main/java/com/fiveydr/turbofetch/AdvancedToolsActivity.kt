@@ -301,7 +301,7 @@ class AdvancedToolsActivity : ComponentActivity() {
     private fun editText(parent: LinearLayout, hintText: String, value: String, input: Int = InputType.TYPE_CLASS_TEXT): EditText {
         val field = EditText(this).apply {
             hint = hintText; setText(value); textSize = 15f; inputType = input
-            setSingleLine(input != (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE)
+            setSingleLine(input != (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE))
             setPadding(dp(12), dp(8), dp(12), dp(8))
         }
         parent.addView(field, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(5) })
