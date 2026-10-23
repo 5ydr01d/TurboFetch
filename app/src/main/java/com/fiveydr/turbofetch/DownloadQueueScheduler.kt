@@ -15,6 +15,7 @@ import java.io.File
  * on completion so the next local queue item can begin without requiring the UI to be visible.
  */
 internal object DownloadQueueScheduler {
+    @Synchronized
     fun pump(context: Context) {
         val appContext = context.applicationContext
         val preferences = appContext.getSharedPreferences("turbofetch", Context.MODE_PRIVATE)
