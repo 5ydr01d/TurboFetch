@@ -62,7 +62,7 @@ class TurboBrowserActivity : ComponentActivity() {
         }
         address = EditText(this).apply {
             hint = "Search or enter URL"
-            singleLine = true
+            setSingleLine(true)
             textSize = 14f
             setSelectAllOnFocus(false)
         }
