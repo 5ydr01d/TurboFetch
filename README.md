@@ -6,6 +6,10 @@ TurboFetch is an ad-free, privacy-first Android download manager built with Kotl
 
 - Redesigned Material 3 interface with Home, Downloads, Files, and Settings destinations.
 - Light/dark themes and adjustable in-app text size.
+- Built-in multi-tab WebView browser with ad/tracker filtering, private tabs, bookmarks, local history, exposed media/file-link capture, and a page-link grabber.
+- Batch queueing from pasted text, clipboard or TXT files; URL-list export; optional request headers for compatible hosts.
+- Download scheduler with reboot restoration, Wi-Fi-only gating, global speed cap, HTTP proxy, configurable parallel-part count, and 1–30 concurrent downloads.
+- MD5 and SHA-256 file checksum tool, pause/resume all, retry failed jobs, and clear-completed-history without deleting saved files.
 - Persistent FIFO queue with configurable concurrency from 1–5.
 - New downloads use TurboFetch's custom HTTP engine and foreground service rather than Android DownloadManager.
 - Safe partial-file resume using HTTP Range and If-Range when the server provides a usable ETag or Last-Modified validator.
@@ -36,8 +40,8 @@ After a successful main-branch build, the workflow uploads `TurboFetch-debug-apk
 1. Verify pause/resume, process death, reboot recovery, duplicate filenames, and large files on physical devices.
 2. Expand destination controls, safer filename/MIME detection, and diagnostics with HTTP response details.
 3. Validate segmented resume, server changes during transfer, and crash recovery on physical devices.
-4. Add browser integration and link capture after core transfer behavior is dependable.
-5. Evaluate torrent support separately.
+4. Validate browser compatibility, media capture, scheduler delivery and proxy behavior on physical Android devices.
+5. Evaluate advanced streaming playlist support separately. Torrent downloads remain out of scope.
 
 ## Privacy and limitations
 

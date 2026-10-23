@@ -110,6 +110,7 @@ private enum class DownloadFilter(val label: String) {
 
 class MainActivity : ComponentActivity() {
     private var pendingUrlAfterStoragePermission: String? = null
+    private var sharedUrlOnLaunch: String? = null
     private val STORAGE_PERMISSION_REQUEST = 8107
     private lateinit var downloadManager: DownloadManager
     private val preferences by lazy { getSharedPreferences("turbofetch", Context.MODE_PRIVATE) }
@@ -118,6 +119,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         downloadManager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
+        val sharedText = when (intent?.action) {
+            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
+            Intent.ACTION_PROCESS_TEXT -> intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
+            else -> null
+        }.orEmpty()
+        sharedUrlOnLaunch = DownloadLinkTools.extractUrls(sharedText).firstOrNull()
 
         setContent {
             var darkMode by remember { mutableStateOf(preferences.getBoolean("dark_mode", false)) }
@@ -153,13 +160,13 @@ class MainActivity : ComponentActivity() {
         onTextScaleChange: (Float) -> Unit
     ) {
         var tab by remember { mutableStateOf(AppTab.Home) }
-        var urlInput by remember { mutableStateOf("") }
+        var urlInput by remember { mutableStateOf(sharedUrlOnLaunch.orEmpty()) }
         var search by remember { mutableStateOf("") }
         var filter by remember { mutableStateOf(DownloadFilter.All) }
         var rows by remember { mutableStateOf(emptyList<DownloadRow>()) }
         var loading by remember { mutableStateOf(true) }
         var maxConcurrent by remember {
-            mutableIntStateOf(preferences.getInt("max_concurrent_downloads", 3).coerceIn(1, 5))
+            mutableIntStateOf(preferences.getInt("max_concurrent_downloads", 3).coerceIn(1, 30))
         }
 
         LaunchedEffect(Unit) {
@@ -226,6 +233,10 @@ class MainActivity : ComponentActivity() {
                     AppTab.Home -> {
                         LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             item { HomeHeader(activeCount = activeCount, completedCount = completedCount, total = rows.size) }
+                            item { AdvancedToolsCard(
+                                onBrowser = { startActivity(Intent(this@MainActivity, TurboBrowserActivity::class.java)) },
+                                onTools = { startActivity(Intent(this@MainActivity, AdvancedToolsActivity::class.java)) }
+                            ) }
                             item { AddDownloadCard(value = urlInput, onValueChange = { urlInput = it }, onAdd = { enqueueDownload(urlInput, rows) { urlInput = ""; rows = loadRows() } }) }
                             item { SectionHeader("Recent downloads", "${rows.size} tracked") }
                             if (rows.isEmpty()) {
@@ -355,12 +366,12 @@ class MainActivity : ComponentActivity() {
                                     Slider(
                                         value = maxConcurrent.toFloat(),
                                         onValueChange = { value ->
-                                            maxConcurrent = value.toInt().coerceIn(1, 5)
+                                            maxConcurrent = value.toInt().coerceIn(1, 30)
                                             preferences.edit().putInt("max_concurrent_downloads", maxConcurrent).apply()
                                             pumpQueue()
                                         },
-                                        valueRange = 1f..5f,
-                                        steps = 3
+                                        valueRange = 1f..30f,
+                                        steps = 28
                                     )
                                     Text("Limits downloads started by TurboFetch. Lowering this value won't interrupt transfers already running.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
@@ -425,6 +436,24 @@ class MainActivity : ComponentActivity() {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text(count.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(label, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+
+    @Composable
+    private fun AdvancedToolsCard(onBrowser: () -> Unit, onTools: () -> Unit) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Text("Download suite", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Built-in browser, batch links, scheduler, proxy, speed limits and file checksums.", style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onBrowser, modifier = Modifier.weight(1f)) { Text("Browser") }
+                    Button(onClick = onTools, modifier = Modifier.weight(1f)) { Text("Advanced tools") }
+                }
             }
         }
     }

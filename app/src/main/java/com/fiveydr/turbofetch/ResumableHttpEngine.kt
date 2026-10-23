@@ -51,6 +51,7 @@ internal class ResumableHttpEngine(
         sourceUrl: String,
         destination: File,
         control: Control = Control(),
+        requestHeaders: Map<String, String> = emptyMap(),
         onProgress: (Progress) -> Unit = {},
     ): Result {
         require(sourceUrl.startsWith("https://", true) || sourceUrl.startsWith("http://", true)) {
@@ -75,13 +76,14 @@ internal class ResumableHttpEngine(
         var connection: HttpURLConnection? = null
         try {
             checkControl(control, part)
-            connection = (URL(sourceUrl).openConnection() as HttpURLConnection).apply {
+            connection = DownloadRuntimeOptions.openConnection(sourceUrl).apply {
                 connectTimeout = connectTimeoutMs
                 readTimeout = readTimeoutMs
                 instanceFollowRedirects = true
                 requestMethod = "GET"
                 setRequestProperty("User-Agent", "TurboFetch/0.2")
                 setRequestProperty("Accept-Encoding", "identity")
+                DownloadRuntimeOptions.applyHeaders(this, requestHeaders)
                 if (requestResume) {
                     setRequestProperty("Range", "bytes=$existing-")
                     setRequestProperty("If-Range", storedEtag?.takeIf { it.isNotBlank() } ?: storedModified)
@@ -123,6 +125,7 @@ internal class ResumableHttpEngine(
                         val read = input.read(buffer)
                         if (read < 0) break
                         if (read == 0) continue
+                        DownloadRuntimeOptions.throttle(read)
                         output.write(buffer, 0, read)
                         transferred += read
                         val now = System.nanoTime()

@@ -16,7 +16,7 @@ import java.io.File
  */
 internal object DownloadQueueScheduler {
     @Synchronized
-    fun add(context: Context, url: String, title: String, description: String) {
+    fun add(context: Context, url: String, title: String, description: String, headers: Map<String, String> = emptyMap()) {
         val preferences = context.applicationContext.getSharedPreferences("turbofetch", Context.MODE_PRIVATE)
         val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
         val usedIds = (0 until saved.length()).mapNotNull { saved.optJSONObject(it)?.optLong("id") }.toSet()
@@ -32,6 +32,13 @@ internal object DownloadQueueScheduler {
                 .put("custom", true)
                 .put("description", description)
                 .put("createdAt", createdAt)
+                .also { row ->
+                    if (headers.isNotEmpty()) {
+                        val headerJson = JSONObject()
+                        headers.forEach { (key, value) -> headerJson.put(key, value) }
+                        row.put("headers", headerJson)
+                    }
+                }
         )
         preferences.edit().putString("downloads", saved.toString()).apply()
     }

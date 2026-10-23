@@ -42,12 +42,14 @@ class CustomDownloadService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        DownloadRuntimeOptions.refresh(this)
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, notification("Preparing download queue"))
         recoverInterruptedRows()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        DownloadRuntimeOptions.refresh(this)
         when (intent?.action) {
             ACTION_PAUSE -> pause(intent.getLongExtra(EXTRA_ID, 0L))
             ACTION_RESUME -> resume(intent.getLongExtra(EXTRA_ID, 0L))
@@ -73,7 +75,19 @@ class CustomDownloadService : Service() {
     }
 
     private fun scheduleQueue() {
-        val limit = prefs.getInt("max_concurrent_downloads", 3).coerceIn(1, 5)
+        val wifiOnly = prefs.getBoolean("wifi_only", false)
+        if (wifiOnly) {
+            val connectivity = getSystemService(android.net.ConnectivityManager::class.java)
+            val network = connectivity.activeNetwork
+            val capabilities = if (network != null) connectivity.getNetworkCapabilities(network) else null
+            val onWifi = capabilities?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
+            if (!onWifi) {
+                updateNotification()
+                if (jobs.isEmpty()) stopSelf()
+                return
+            }
+        }
+        val limit = prefs.getInt("max_concurrent_downloads", 3).coerceIn(1, 30)
         val waiting = synchronized(lock) {
             val rows = readRows()
             (0 until rows.length()).mapNotNull { rows.optJSONObject(it) }
@@ -92,6 +106,15 @@ class CustomDownloadService : Service() {
         val row = findRow(id) ?: return
         val url = row.optString("url")
         val title = row.optString("title", "download.bin")
+        val savedHeaders = row.optJSONObject("headers")
+        val requestHeaders = linkedMapOf<String, String>()
+        if (savedHeaders != null) {
+            val keys = savedHeaders.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                requestHeaders[key] = savedHeaders.optString(key)
+            }
+        }
         val directory = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: filesDir, "transfers")
         if (!directory.exists() && !directory.mkdirs()) {
             updateRow(id) { it.put("phase", PHASE_FAILED).put("reason", "Cannot create download storage directory") }
@@ -108,7 +131,7 @@ class CustomDownloadService : Service() {
         }
         val job = serviceScope.launch(start = CoroutineStart.LAZY) {
             try {
-                val result = engine.download(url, destination, control) { progress ->
+                val result = engine.download(url, destination, control, requestHeaders) { progress ->
                     updateRow(id) {
                         it.put("downloadedBytes", progress.transferredBytes)
                             .put("totalBytes", progress.totalBytes ?: -1L)
