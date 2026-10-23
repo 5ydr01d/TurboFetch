@@ -31,10 +31,48 @@ jobs:
       - name: Run unit tests
         run: gradle --no-daemon testDebugUnitTest
 
+      # Pull-request builds (including forks, which cannot access repository
+      # secrets) only validate compilation. Distributable APKs from main must
+      # always use the repository's persistent signing key.
+      - name: Configure persistent APK signing
+        if: github.event_name != 'pull_request'
+        env:
+          TURBOFETCH_DEBUG_KEYSTORE_BASE64: ${{ secrets.TURBOFETCH_DEBUG_KEYSTORE_BASE64 }}
+          TURBOFETCH_DEBUG_STORE_PASSWORD: ${{ secrets.TURBOFETCH_DEBUG_STORE_PASSWORD }}
+          TURBOFETCH_DEBUG_KEY_ALIAS: ${{ secrets.TURBOFETCH_DEBUG_KEY_ALIAS }}
+          TURBOFETCH_DEBUG_KEY_PASSWORD: ${{ secrets.TURBOFETCH_DEBUG_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${TURBOFETCH_DEBUG_KEYSTORE_BASE64:-}" ||
+                -z "${TURBOFETCH_DEBUG_STORE_PASSWORD:-}" ||
+                -z "${TURBOFETCH_DEBUG_KEY_ALIAS:-}" ||
+                -z "${TURBOFETCH_DEBUG_KEY_PASSWORD:-}" ]]; then
+            echo "::error::Persistent APK signing secrets are not configured. See docs/CI_DEBUG_SIGNING.md."
+            exit 1
+          fi
+
+          keystore_path="$RUNNER_TEMP/turbofetch-debug.keystore"
+          printf '%s' "$TURBOFETCH_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
+          test -s "$keystore_path"
+          echo "TURBOFETCH_DEBUG_KEYSTORE_PATH=$keystore_path" >> "$GITHUB_ENV"
+          echo "TURBOFETCH_DEBUG_STORE_PASSWORD=$TURBOFETCH_DEBUG_STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "TURBOFETCH_DEBUG_KEY_ALIAS=$TURBOFETCH_DEBUG_KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "TURBOFETCH_DEBUG_KEY_PASSWORD=$TURBOFETCH_DEBUG_KEY_PASSWORD" >> "$GITHUB_ENV"
+
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
 
+      - name: Verify APK signer
+        shell: bash
+        run: |
+          set -euo pipefail
+          apksigner="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$apksigner"
+          "$apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
+
       - name: Upload debug APK
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: TurboFetch-debug-apk
