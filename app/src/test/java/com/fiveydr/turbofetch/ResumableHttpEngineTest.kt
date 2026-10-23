@@ -79,11 +79,11 @@ class ResumableHttpEngineTest {
             val bodyLength = payload.size - start
             val status = if (partial) "206 Partial Content" else "200 OK"
             val responseHeaders = buildString {
-                append("HTTP/1.1 $status\\r\\n")
-                append("Content-Length: $bodyLength\\r\\n")
-                append("ETag: \\"test-etag\\"\\r\\n")
-                if (partial) append("Content-Range: bytes $start-${payload.size - 1}/${payload.size}\\r\\n")
-                append("Connection: close\\r\\n\\r\\n")
+                append("HTTP/1.1 $status\r\n")
+                append("Content-Length: $bodyLength\r\n")
+                append("ETag: \"test-etag\"\r\n")
+                if (partial) append("Content-Range: bytes $start-${payload.size - 1}/${payload.size}\r\n")
+                append("Connection: close\r\n\r\n")
             }
             client.getOutputStream().apply {
                 write(responseHeaders.toByteArray(StandardCharsets.ISO_8859_1))
@@ -100,7 +100,7 @@ class ResumableHttpEngineTest {
         partial.writeBytes(payload.copyOfRange(0, 100_000))
         val metadata = Properties().apply {
             setProperty("url", url())
-            setProperty("etag", "\\"test-etag\\"")
+            setProperty("etag", "\"test-etag\"")
         }
         File(root, "sample.bin.part.properties").outputStream().use { metadata.store(it, null) }
 
@@ -119,7 +119,7 @@ class ResumableHttpEngineTest {
         partial.writeBytes(payload.copyOfRange(0, 100_000))
         val metadata = Properties().apply {
             setProperty("url", url())
-            setProperty("etag", "\\"old-etag\\"")
+            setProperty("etag", "\"old-etag\"")
         }
         File(root, "sample.bin.part.properties").outputStream().use { metadata.store(it, null) }
         ignoreRange.set(true)
