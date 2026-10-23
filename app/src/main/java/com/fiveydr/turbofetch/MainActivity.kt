@@ -713,18 +713,3 @@ class MainActivity : ComponentActivity() {
 private fun searchMatches(row: DownloadRow, query: String): Boolean =
     query.isBlank() || row.title.contains(query, ignoreCase = true) || row.url.contains(query, ignoreCase = true)
 
-private fun sanitizeFileName(input: String): String =
-    input.replace(Regex("[\\\\/:*?\\"<>|]"), "_")
-        .replace(Regex("[\\p{Cntrl}]"), "_")
-        .trim()
-        .take(150)
-        .ifBlank { "download.bin" }
-
-private fun formatBytes(value: Long): String {
-    if (value < 1024) return "$value B"
-    val kb = value / 1024.0
-    if (kb < 1024) return String.format("%.1f KB", kb)
-    val mb = kb / 1024.0
-    if (mb < 1024) return String.format("%.1f MB", mb)
-    return String.format("%.2f GB", mb / 1024.0)
-}
