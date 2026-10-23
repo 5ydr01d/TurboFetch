@@ -18,6 +18,7 @@ import java.io.File
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -97,7 +98,7 @@ class CustomDownloadService : Service() {
                 .put("destination", destination.absolutePath)
                 .put("startedAt", System.currentTimeMillis())
         }
-        val job = serviceScope.launch {
+        val job = serviceScope.launch(start = CoroutineStart.LAZY) {
             try {
                 val result = engine.download(url, destination, control) { progress ->
                     updateRow(id) {
@@ -139,6 +140,7 @@ class CustomDownloadService : Service() {
             }
         }
         jobs[id] = job
+        job.start()
     }
 
     private fun pause(id: Long) {
@@ -178,7 +180,13 @@ class CustomDownloadService : Service() {
             var changed = false
             for (i in 0 until rows.length()) {
                 val row = rows.optJSONObject(i) ?: continue
-                if (row.optBoolean("custom", false) && row.optString("phase") == PHASE_DOWNLOADING) {
+                if (row.optString("phase") == "waiting" && !row.optBoolean("custom", false)) {
+                    // Migrate queued entries created by the earlier DownloadManager-backed version.
+                    row.put("custom", true)
+                        .put("phase", PHASE_WAITING)
+                        .put("reason", "Migrated to the resumable engine")
+                    changed = true
+                } else if (row.optBoolean("custom", false) && row.optString("phase") == PHASE_DOWNLOADING) {
                     row.put("phase", PHASE_WAITING)
                         .put("reason", "Interrupted · resuming from saved partial data")
                     changed = true
