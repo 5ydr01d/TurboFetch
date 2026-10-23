@@ -28,11 +28,27 @@ internal object DownloadQueueScheduler {
                 .put("id", localId)
                 .put("url", url)
                 .put("title", title)
-                .put("phase", "waiting")
+                .put("phase", CustomDownloadService.PHASE_WAITING)
+                .put("custom", true)
                 .put("description", description)
                 .put("createdAt", createdAt)
         )
         preferences.edit().putString("downloads", saved.toString()).apply()
+    }
+
+    @Synchronized
+    fun requeue(context: Context, id: Long) {
+        val preferences = context.applicationContext.getSharedPreferences("turbofetch", Context.MODE_PRIVATE)
+        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+        for (i in 0 until saved.length()) {
+            val item = saved.optJSONObject(i) ?: continue
+            if (item.optLong("id") == id && item.optBoolean("custom", false)) {
+                item.put("phase", CustomDownloadService.PHASE_WAITING)
+                    .put("reason", "")
+                preferences.edit().putString("downloads", saved.toString()).apply()
+                return
+            }
+        }
     }
 
     @Synchronized
