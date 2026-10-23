@@ -64,7 +64,7 @@ internal class AdaptiveDownloadEngine(
                 val start = probe.total * index / count
                 val end = probe.total * (index + 1) / count - 1
                 executor.submit(Callable {
-                    var reportedForSegment = 0L
+                    var reportedForSegment = scratch[index].length()
                     fetchRange(sourceUrl, scratch[index], start, end, probe, control) { current ->
                         val delta = (current - reportedForSegment).coerceAtLeast(0L)
                         reportedForSegment = current
