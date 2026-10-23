@@ -558,7 +558,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 if (row.reason.isNotBlank()) {
-                    Text(row.reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    Text(row.reason, style = MaterialTheme.typography.bodySmall, color = if (row.isProblem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (row.isComplete) {
@@ -583,7 +583,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun statusColor(status: String): androidx.compose.ui.graphics.Color = when (status) {
         "Complete" -> androidx.compose.ui.graphics.Color(0xFF16845B)
-        "Failed", "Record unavailable" -> MaterialTheme.colorScheme.error
+        "Failed", "Record unavailable", "Cancelled" -> MaterialTheme.colorScheme.error
         "Paused by Android" -> androidx.compose.ui.graphics.Color(0xFFB7791F)
         else -> MaterialTheme.colorScheme.primary
     }
