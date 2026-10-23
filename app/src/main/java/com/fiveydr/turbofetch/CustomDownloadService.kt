@@ -36,7 +36,7 @@ class CustomDownloadService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val jobs = ConcurrentHashMap<Long, Job>()
     private val controls = ConcurrentHashMap<Long, ResumableHttpEngine.Control>()
-    private val lock = Any()
+    private val lock = DownloadQueueScheduler
     private val engine by lazy { ResumableHttpEngine() }
     private val prefs by lazy { getSharedPreferences("turbofetch", Context.MODE_PRIVATE) }
 
