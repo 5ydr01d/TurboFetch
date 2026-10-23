@@ -59,6 +59,13 @@ class CustomDownloadService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        // Android 15+ limits dataSync foreground services. Preserve partial files and stop cleanly.
+        controls.values.forEach { it.pause() }
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf(startId)
+    }
+
     override fun onDestroy() {
         controls.values.forEach { it.pause() }
         serviceScope.cancel()
@@ -127,7 +134,11 @@ class CustomDownloadService : Service() {
             } catch (_: ResumableHttpEngine.CancelledException) {
                 updateRow(id) { it.put("phase", PHASE_CANCELLED).put("reason", "Cancelled") }
             } catch (error: CancellationException) {
-                updateRow(id) { it.put("phase", PHASE_WAITING).put("reason", "Interrupted · will resume when restarted") }
+                val paused = control.isPaused()
+                updateRow(id) {
+                    it.put("phase", if (paused) PHASE_PAUSED else PHASE_WAITING)
+                        .put("reason", if (paused) "Paused by Android's background execution limit · resume to continue" else "Interrupted · will resume when restarted")
+                }
                 throw error
             } catch (error: Exception) {
                 updateRow(id) {
