@@ -9,6 +9,7 @@ import java.io.FileInputStream
 import java.util.Properties
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -108,6 +109,8 @@ internal class AdaptiveDownloadEngine(
             throw cause
         } finally {
             executor.shutdownNow()
+            // Do not let workers from a paused attempt keep writing while the next attempt resumes.
+            runCatching { executor.awaitTermination(5, TimeUnit.SECONDS) }
             if (!preserveScratch) {
                 scratch.forEach { it.delete() }
                 manifest.delete()
