@@ -1,0 +1,3 @@
+[submodule "feather_browser"]
+	path = feather_browser
+	url = https://github.com/aanneion/feather_browser.git
