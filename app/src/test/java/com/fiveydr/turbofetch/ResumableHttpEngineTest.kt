@@ -82,11 +82,11 @@ class ResumableHttpEngineTest {
             val bodyLength = endByte - start + 1
             val status = if (partial) "206 Partial Content" else "200 OK"
             val responseHeaders = buildString {
-                append("HTTP/1.1 $status\\r\\n")
-                append("Content-Length: $bodyLength\\r\\n")
-                append("ETag: \\"test-etag\\"\\r\\n")
-                if (partial) append("Content-Range: bytes $start-$endByte/${payload.size}\\r\\n")
-                append("Connection: close\\r\\n\\r\\n")
+                append("HTTP/1.1 $status\r\n")
+                append("Content-Length: $bodyLength\r\n")
+                append("ETag: \"test-etag\"\r\n")
+                if (partial) append("Content-Range: bytes $start-$endByte/${payload.size}\r\n")
+                append("Connection: close\r\n\r\n")
             }
             client.getOutputStream().apply {
                 write(responseHeaders.toByteArray(StandardCharsets.ISO_8859_1))
