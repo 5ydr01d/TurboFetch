@@ -384,13 +384,33 @@ class MainActivity : ComponentActivity() {
                                     )
                                     Text("Limits downloads started by TurboFetch. Lowering this value won't interrupt transfers already running.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
+                                HorizontalDivider()
+                                var segmentCount by remember {
+                                    mutableIntStateOf(preferences.getInt("segment_count", 4).coerceIn(2, 8))
+                                }
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Connections per large file", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                                        Text("$segmentCount", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    Slider(
+                                        value = segmentCount.toFloat(),
+                                        onValueChange = { value ->
+                                            segmentCount = value.toInt().coerceIn(2, 8)
+                                            preferences.edit().putInt("segment_count", segmentCount).apply()
+                                        },
+                                        valueRange = 2f..8f,
+                                        steps = 5
+                                    )
+                                    Text("Uses parallel byte ranges for large files (8 MB+), only when the server supports ranges and provides a stable validator. Unsupported links use the resumable single-connection engine. A running transfer keeps its current setting.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         }
                         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Privacy by design", style = MaterialTheme.typography.titleMedium)
                                 Text("No advertising SDKs or analytics SDKs. Download history is stored locally on this device.", style = MaterialTheme.typography.bodyMedium)
-                                Text("New downloads use TurboFetch’s custom HTTP engine with pause/resume and partial-file recovery when the source supports safe byte-range requests. Segmented multi-connection downloads are not implemented yet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Large files may use parallel byte-range connections when the server supports ranges and provides a stable validator. Otherwise TurboFetch uses the single-stream resumable engine. Failed transfers retain a diagnostic category and the server/storage error message.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         Spacer(Modifier.height(8.dp))
