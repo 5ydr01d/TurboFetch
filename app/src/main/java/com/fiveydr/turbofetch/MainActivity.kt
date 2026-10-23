@@ -9,34 +9,64 @@ import android.os.Environment
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import kotlinx.coroutines.delay
 import org.json.JSONArray
+import org.json.JSONObject
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
@@ -51,6 +81,20 @@ private data class DownloadRow(
 ) {
     val percent: Int
         get() = if (total > 0L) ((downloaded * 100L) / total).toInt().coerceIn(0, 100) else 0
+    val isActive: Boolean get() = status == "Downloading" || status == "Queued" || status == "Paused by Android"
+    val isComplete: Boolean get() = status == "Complete"
+    val isProblem: Boolean get() = status == "Failed" || status == "Record unavailable"
+}
+
+private enum class AppTab(val label: String, val symbol: String) {
+    Home("Home", "⌂"),
+    Downloads("Downloads", "↓"),
+    Files("Files", "▤"),
+    Settings("Settings", "⚙")
+}
+
+private enum class DownloadFilter(val label: String) {
+    All("All"), Active("Active"), Complete("Complete"), Problems("Issues")
 }
 
 class MainActivity : ComponentActivity() {
@@ -59,165 +103,489 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         downloadManager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
 
         setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    var urlInput by remember { mutableStateOf("") }
-                    var rows by remember { mutableStateOf(loadRows()) }
-                    var loading by remember { mutableStateOf(false) }
+            var darkMode by remember { mutableStateOf(preferences.getBoolean("dark_mode", false)) }
+            var textScale by remember { mutableFloatStateOf(preferences.getFloat("text_scale", 1f).coerceIn(0.9f, 1.3f)) }
+            val baseDensity = LocalDensity.current
+            CompositionLocalProvider(
+                LocalDensity provides Density(baseDensity.density, baseDensity.fontScale * textScale)
+            ) {
+                MaterialTheme(colorScheme = if (darkMode) darkColorScheme() else lightColorScheme()) {
+                    TurboFetchApp(
+                        darkMode = darkMode,
+                        textScale = textScale,
+                        onDarkModeChange = {
+                            darkMode = it
+                            preferences.edit().putBoolean("dark_mode", it).apply()
+                        },
+                        onTextScaleChange = {
+                            textScale = it
+                            preferences.edit().putFloat("text_scale", it).apply()
+                        }
+                    )
+                }
+            }
+        }
+    }
 
-                    LaunchedEffect(Unit) {
-                        while (true) {
-                            rows = loadRows()
-                            delay(1000)
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    private fun TurboFetchApp(
+        darkMode: Boolean,
+        textScale: Float,
+        onDarkModeChange: (Boolean) -> Unit,
+        onTextScaleChange: (Float) -> Unit
+    ) {
+        var tab by remember { mutableStateOf(AppTab.Home) }
+        var urlInput by remember { mutableStateOf("") }
+        var search by remember { mutableStateOf("") }
+        var filter by remember { mutableStateOf(DownloadFilter.All) }
+        var rows by remember { mutableStateOf(emptyList<DownloadRow>()) }
+        var loading by remember { mutableStateOf(true) }
+
+        LaunchedEffect(Unit) {
+            while (true) {
+                rows = loadRows()
+                loading = false
+                delay(if (rows.any { it.isActive }) 1500L else 5000L)
+            }
+        }
+
+        val activeCount = rows.count { it.isActive }
+        val completedCount = rows.count { it.isComplete }
+        val visibleRows = rows.filter { row ->
+            val matchesSearch = search.isBlank() ||
+                row.title.contains(search, ignoreCase = true) ||
+                row.url.contains(search, ignoreCase = true)
+            val matchesFilter = when (filter) {
+                DownloadFilter.All -> true
+                DownloadFilter.Active -> row.isActive
+                DownloadFilter.Complete -> row.isComplete
+                DownloadFilter.Problems -> row.isProblem || row.status == "Failed"
+            }
+            matchesSearch && matchesFilter
+        }
+        val filesRows = rows.filter { it.isComplete && searchMatches(it, search) }
+
+        Scaffold(
+            contentWindowInsets = WindowInsets.statusBars.union(WindowInsets.navigationBars),
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text("TurboFetch", fontWeight = FontWeight.Bold)
+                            Text(
+                                "Fast downloads. No ads. No tracking.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
-
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text("TurboFetch", style = MaterialTheme.typography.headlineLarge)
-                        Text(
-                            "Fast, straightforward downloads. No ads. No analytics.",
-                            style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            bottomBar = {
+                NavigationBar {
+                    AppTab.entries.forEach { destination ->
+                        NavigationBarItem(
+                            selected = tab == destination,
+                            onClick = { tab = destination },
+                            icon = { Text(destination.symbol, style = MaterialTheme.typography.titleLarge) },
+                            label = { Text(destination.label) }
                         )
-                        OutlinedTextField(
+                    }
+                }
+            }
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                when (tab) {
+                    AppTab.Home -> {
+                        HomeHeader(activeCount = activeCount, completedCount = completedCount, total = rows.size)
+                        AddDownloadCard(
                             value = urlInput,
                             onValueChange = { urlInput = it },
-                            label = { Text("Direct download URL") },
-                            placeholder = { Text("https://example.com/file.zip") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
+                            onAdd = { enqueueDownload(urlInput, rows) { urlInput = ""; rows = loadRows() } }
                         )
-                        Button(
-                            onClick = {
-                                val cleanUrl = urlInput.trim()
-                                if (!cleanUrl.startsWith("https://", true) &&
-                                    !cleanUrl.startsWith("http://", true)
-                                ) {
-                                    Toast.makeText(this@MainActivity, "Enter a valid HTTP or HTTPS URL", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    try {
-                                        val uri = Uri.parse(cleanUrl)
-                                        if (uri.host.isNullOrBlank()) {
-                                            Toast.makeText(this@MainActivity, "The URL is incomplete", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            val request = DownloadManager.Request(uri)
-                                                .setTitle(fileNameFrom(uri))
-                                                .setDescription("Downloading with TurboFetch")
-                                                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                                                .setAllowedOverMetered(true)
-                                                .setAllowedOverRoaming(false)
-                                                .setDestinationInExternalPublicDir(
-                                                    Environment.DIRECTORY_DOWNLOADS,
-                                                    fileNameFrom(uri)
-                                                )
-                                            val id = downloadManager.enqueue(request)
-                                            saveId(id, cleanUrl, fileNameFrom(uri))
-                                            urlInput = ""
-                                            rows = loadRows()
-                                            Toast.makeText(this@MainActivity, "Download added to queue", Toast.LENGTH_SHORT).show()
-                                        }
-                                    } catch (error: Exception) {
-                                        Toast.makeText(this@MainActivity, "Could not start download: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show()
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Add download")
-                        }
-
-                        Divider()
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Your downloads", style = MaterialTheme.typography.titleLarge)
-                            Text("${rows.size} tracked")
-                        }
-
-                        if (loading) CircularProgressIndicator()
-
+                        SectionHeader("Recent downloads", "${rows.size} tracked")
                         if (rows.isEmpty()) {
-                            Text("Your queue is empty. Paste a direct file URL above to get started.")
+                            EmptyState(
+                                title = "Your downloads start here",
+                                message = "Paste a direct file link above. Completed files stay in your history.",
+                                action = "Browse downloads",
+                                onAction = { tab = AppTab.Downloads }
+                            )
                         } else {
                             LazyColumn(
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                items(rows, key = { it.id }) { row ->
-                                    Card(modifier = Modifier.fillMaxWidth()) {
-                                        Column(
-                                            modifier = Modifier.fillMaxWidth().padding(12.dp),
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Text(
-                                                row.title,
-                                                style = MaterialTheme.typography.titleMedium,
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                row.url,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                maxLines = 2,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(row.status, style = MaterialTheme.typography.bodyMedium)
-                                            if (row.status == "Downloading") {
-                                                if (row.total > 0L) {
-                                                    Text("${row.percent}% · ${formatBytes(row.downloaded)} / ${formatBytes(row.total)}")
-                                                } else {
-                                                    Text("${formatBytes(row.downloaded)} downloaded")
-                                                }
-                                            }
-                                            if (row.reason.isNotBlank()) {
-                                                Text(row.reason, style = MaterialTheme.typography.bodySmall)
-                                            }
-                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                if (row.status == "Complete") {
-                                                    Button(onClick = { openDownloadedFile(row.id) }) { Text("Open") }
-                                                }
-                                                if (row.status == "Failed" || row.status == "Cancelled") {
-                                                    Button(onClick = {
-                                                        retry(row.url, row.title)
-                                                        rows = loadRows()
-                                                    }) { Text("Retry") }
-                                                }
-                                                Button(onClick = {
-                                                    if (row.status == "Downloading" || row.status == "Queued") {
-                                                        downloadManager.remove(row.id)
-                                                    }
-                                                    removeId(row.id)
-                                                    rows = loadRows()
-                                                }) {
-                                                    Text(if (row.status == "Downloading" || row.status == "Queued") "Cancel" else "Dismiss")
-                                                }
-                                            }
-                                        }
+                                items(rows.take(5), key = { it.id }) { row ->
+                                    DownloadCard(
+                                        row = row,
+                                        onOpen = { openDownloadedFile(row.id) },
+                                        onShare = { shareDownloadedFile(row.id) },
+                                        onRetry = { retry(row, rows) { rows = loadRows() } },
+                                        onDismiss = { dismissOrCancel(row) { rows = loadRows() } }
+                                    )
+                                }
+                                item {
+                                    OutlinedButton(onClick = { tab = AppTab.Downloads }, modifier = Modifier.fillMaxWidth()) {
+                                        Text("View all downloads")
                                     }
                                 }
                             }
                         }
+                    }
+                    AppTab.Downloads -> {
+                        SectionHeader("Download manager", "$activeCount active · $completedCount complete")
+                        OutlinedTextField(
+                            value = search,
+                            onValueChange = { search = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Search downloads") },
+                            placeholder = { Text("Filename or source URL") }
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            DownloadFilter.entries.forEach { option ->
+                                FilterChip(
+                                    selected = filter == option,
+                                    onClick = { filter = option },
+                                    label = { Text(option.label) }
+                                )
+                            }
+                        }
+                        if (loading && rows.isEmpty()) {
+                            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                                Text("Loading download history…")
+                            }
+                        } else if (visibleRows.isEmpty()) {
+                            EmptyState(
+                                title = if (search.isBlank()) "Nothing in this view" else "No matching downloads",
+                                message = if (search.isBlank()) "Add a link from Home to start a download." else "Try another filename, URL, or status filter.",
+                                action = "Add download",
+                                onAction = { tab = AppTab.Home }
+                            )
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                items(visibleRows, key = { it.id }) { row ->
+                                    DownloadCard(
+                                        row = row,
+                                        onOpen = { openDownloadedFile(row.id) },
+                                        onShare = { shareDownloadedFile(row.id) },
+                                        onRetry = { retry(row, rows) { rows = loadRows() } },
+                                        onDismiss = { dismissOrCancel(row) { rows = loadRows() } }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    AppTab.Files -> {
+                        SectionHeader("Downloaded files", "$filesRows.size available in history")
+                        OutlinedTextField(
+                            value = search,
+                            onValueChange = { search = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Find a file") },
+                            placeholder = { Text("Search by filename") }
+                        )
+                        if (filesRows.isEmpty()) {
+                            EmptyState(
+                                title = "No completed files yet",
+                                message = "When a download completes, it will appear here with Open and Share actions.",
+                                action = "View downloads",
+                                onAction = { tab = AppTab.Downloads }
+                            )
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                items(filesRows, key = { it.id }) { row ->
+                                    DownloadCard(
+                                        row = row,
+                                        onOpen = { openDownloadedFile(row.id) },
+                                        onShare = { shareDownloadedFile(row.id) },
+                                        onRetry = { retry(row, rows) { rows = loadRows() } },
+                                        onDismiss = { dismissOrCancel(row) { rows = loadRows() } }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    AppTab.Settings -> {
+                        SectionHeader("Settings", "Make TurboFetch yours")
+                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text("Dark theme", style = MaterialTheme.typography.titleMedium)
+                                        Text("Use a darker interface in low light.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Switch(checked = darkMode, onCheckedChange = onDarkModeChange)
+                                }
+                                HorizontalDivider()
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Text size", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                                        Text("${(textScale * 100).toInt()}%", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    Slider(
+                                        value = textScale,
+                                        onValueChange = onTextScaleChange,
+                                        valueRange = 0.9f..1.3f,
+                                        steps = 3
+                                    )
+                                    Text("Adjust text for comfortable reading.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("Privacy by design", style = MaterialTheme.typography.titleMedium)
+                                Text("No advertising SDKs or analytics SDKs. Download history is stored locally on this device.", style = MaterialTheme.typography.bodyMedium)
+                                Text("Browser integration and advanced multi-connection downloads are planned for a later phase.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
                     }
                 }
             }
         }
     }
 
+    @Composable
+    private fun HomeHeader(activeCount: Int, completedCount: Int, total: Int) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Your downloads, under control", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text("A clean, private place for every file.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    StatPill("Active", activeCount)
+                    StatPill("Complete", completedCount)
+                    StatPill("Tracked", total)
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun StatPill(label: String, count: Int) {
+        Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)) {
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Text(count.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(label, style = MaterialTheme.typography.labelSmall)
+            }
+        }
+    }
+
+    @Composable
+    private fun AddDownloadCard(value: String, onValueChange: (String) -> Unit, onAdd: () -> Unit) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Add a download", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Direct file URL") },
+                    placeholder = { Text("https://example.com/file.zip") },
+                    singleLine = true
+                )
+                Button(onClick = onAdd, modifier = Modifier.fillMaxWidth(), enabled = value.isNotBlank()) {
+                    Text("↓   Start download")
+                }
+                Text("Direct HTTP/HTTPS links · No ads · No account", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+
+    @Composable
+    private fun SectionHeader(title: String, subtitle: String) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+
+    @Composable
+    private fun EmptyState(title: String, message: String, action: String, onAction: () -> Unit) {
+        Box(Modifier.fillMaxWidth().weight(1f, fill = false).padding(vertical = 26.dp), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer, modifier = Modifier.size(64.dp)) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("↓", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                    }
+                }
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedButton(onClick = onAction) { Text(action) }
+            }
+        }
+    }
+
+    @Composable
+    private fun DownloadCard(
+        row: DownloadRow,
+        onOpen: () -> Unit,
+        onShare: () -> Unit,
+        onRetry: () -> Unit,
+        onDismiss: () -> Unit
+    ) {
+        val iconText = when (row.title.substringAfterLast('.', "").lowercase()) {
+            "apk" -> "APK"
+            "zip", "rar", "7z", "gz" -> "ZIP"
+            "pdf" -> "PDF"
+            "mp4", "mkv", "webm", "mov" -> "VID"
+            "mp3", "m4a", "wav", "ogg" -> "AUD"
+            "jpg", "jpeg", "png", "webp", "gif" -> "IMG"
+            "doc", "docx", "txt", "rtf" -> "DOC"
+            else -> "FILE"
+        }
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+        ) {
+            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(11.dp), verticalAlignment = Alignment.Top) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(iconText, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                        }
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(row.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(row.url, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = statusColor(row.status).copy(alpha = 0.13f)
+                        ) {
+                            Text(
+                                row.status,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = statusColor(row.status)
+                            )
+                        }
+                    }
+                }
+                if (row.isActive || row.isComplete) {
+                    if (row.total > 0L) {
+                        LinearProgressIndicator(
+                            progress = { row.percent / 100f },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = if (row.isComplete) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                if (row.isComplete) "Downloaded ${formatBytes(row.downloaded)}" else "${row.percent}% · ${formatBytes(row.downloaded)} / ${formatBytes(row.total)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (!row.isComplete) Text("${row.percent}%", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                        }
+                    } else if (row.isActive) {
+                        Text("${formatBytes(row.downloaded)} downloaded", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                }
+                if (row.reason.isNotBlank()) {
+                    Text(row.reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (row.isComplete) {
+                        Button(onClick = onOpen, modifier = Modifier.weight(1f)) { Text("Open") }
+                        OutlinedButton(onClick = onShare, modifier = Modifier.weight(1f)) { Text("Share") }
+                    } else if (row.status == "Failed" || row.status == "Cancelled") {
+                        Button(onClick = onRetry, modifier = Modifier.weight(1f)) { Text("Retry") }
+                    }
+                    OutlinedButton(onClick = onDismiss) {
+                        Text(if (row.isActive) "Cancel" else "Dismiss")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun statusColor(status: String): androidx.compose.ui.graphics.Color = when (status) {
+        "Complete" -> androidx.compose.ui.graphics.Color(0xFF16845B)
+        "Failed", "Record unavailable" -> MaterialTheme.colorScheme.error
+        "Paused by Android" -> androidx.compose.ui.graphics.Color(0xFFB7791F)
+        else -> MaterialTheme.colorScheme.primary
+    }
+
+    private fun enqueueDownload(input: String, existing: List<DownloadRow>, onSuccess: () -> Unit) {
+        val cleanUrl = input.trim()
+        val uri = runCatching { Uri.parse(cleanUrl) }.getOrNull()
+        if ((uri?.scheme != "https" && uri?.scheme != "http") || uri.host.isNullOrBlank()) {
+            Toast.makeText(this, "Enter a valid direct HTTP or HTTPS URL", Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val baseName = fileNameFrom(uri)
+            val title = uniqueTitle(baseName, existing)
+            val request = DownloadManager.Request(uri)
+                .setTitle(title)
+                .setDescription("Downloading with TurboFetch")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(false)
+                .allowScanningByMediaScanner()
+                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, title)
+            val id = downloadManager.enqueue(request)
+            saveId(id, cleanUrl, title)
+            Toast.makeText(this, "Download added to queue", Toast.LENGTH_SHORT).show()
+            onSuccess()
+        } catch (error: Exception) {
+            Toast.makeText(this, "Could not start download: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun fileNameFrom(uri: Uri): String {
         val raw = uri.lastPathSegment
-            ?.let { URLDecoder.decode(it, StandardCharsets.UTF_8.name()) }
+            ?.let { runCatching { URLDecoder.decode(it, StandardCharsets.UTF_8.name()) }.getOrNull() }
             ?.substringAfterLast('/')
             ?.takeIf { it.isNotBlank() }
             ?: "download-${System.currentTimeMillis()}.bin"
-        return raw.replace(Regex("[\\\\/:*?\"<>|]"), "_").take(150)
+        return sanitizeFileName(raw)
+    }
+
+    private fun uniqueTitle(baseName: String, rows: List<DownloadRow>): String {
+        val used = rows.map { it.title.lowercase() }.toSet()
+        if (baseName.lowercase() !in used) return baseName
+        val dot = baseName.lastIndexOf('.')
+        val stem = if (dot > 0) baseName.substring(0, dot) else baseName
+        val ext = if (dot > 0) baseName.substring(dot) else ""
+        var n = 1
+        while ("$stem ($n)$ext".lowercase() in used) n++
+        return "$stem ($n)$ext"
     }
 
     private fun saveId(id: Long, url: String, title: String) {
         val all = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
-        all.put(org.json.JSONObject().put("id", id).put("url", url).put("title", title))
+        all.put(JSONObject().put("id", id).put("url", url).put("title", title))
         preferences.edit().putString("downloads", all.toString()).apply()
     }
 
@@ -254,32 +622,51 @@ class MainActivity : ComponentActivity() {
                         DownloadManager.STATUS_FAILED -> "Failed"
                         else -> "Unknown"
                     }
-                    val reason = if (statusValue == DownloadManager.STATUS_FAILED ||
-                        statusValue == DownloadManager.STATUS_PAUSED
-                    ) "Reason code: $reasonValue" else ""
+                    val reason = when {
+                        statusValue == DownloadManager.STATUS_FAILED -> "Download failed · reason code $reasonValue"
+                        statusValue == DownloadManager.STATUS_PAUSED -> "Paused by Android · reason code $reasonValue"
+                        else -> ""
+                    }
                     result.add(DownloadRow(id, title, url, status, downloaded, total, reason))
                 } else {
-                    // Keep history even if Android has purged the DownloadManager record.
-                    result.add(DownloadRow(id, title, url, "Record unavailable", 0, 0))
+                    result.add(DownloadRow(id, title, url, "Record unavailable", 0, 0, "Android no longer exposes this download record. The history entry was kept."))
                 }
             }
         }
         return result.sortedByDescending { it.id }
     }
 
-    private fun retry(url: String, title: String) {
+    private fun dismissOrCancel(row: DownloadRow, refresh: () -> Unit) {
+        if (row.isActive) {
+            downloadManager.remove(row.id)
+            Toast.makeText(this, "Download cancelled", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "History entry dismissed; the file is not deleted", Toast.LENGTH_SHORT).show()
+        }
+        removeId(row.id)
+        refresh()
+    }
+
+    private fun retry(row: DownloadRow, existing: List<DownloadRow>, refresh: () -> Unit) {
+        val uri = runCatching { Uri.parse(row.url) }.getOrNull()
+        if (uri == null || uri.host.isNullOrBlank() || (uri.scheme != "http" && uri.scheme != "https")) {
+            Toast.makeText(this, "The saved URL is not valid. Add the link again.", Toast.LENGTH_LONG).show()
+            return
+        }
         try {
-            val uri = Uri.parse(url)
+            val title = uniqueTitle(row.title, existing)
             val request = DownloadManager.Request(uri)
                 .setTitle(title)
                 .setDescription("Retrying with TurboFetch")
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(false)
+                .allowScanningByMediaScanner()
                 .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, title)
             val newId = downloadManager.enqueue(request)
-            saveId(newId, url, title)
+            saveId(newId, row.url, title)
             Toast.makeText(this, "Retry queued", Toast.LENGTH_SHORT).show()
+            refresh()
         } catch (error: Exception) {
             Toast.makeText(this, "Retry failed: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show()
         }
@@ -298,17 +685,45 @@ class MainActivity : ComponentActivity() {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startActivity(intent)
-        } catch (error: Exception) {
-            Toast.makeText(this, "No app can open this file, or it is unavailable", Toast.LENGTH_LONG).show()
+        } catch (_: Exception) {
+            Toast.makeText(this, "No compatible app could open this file, or the file is unavailable", Toast.LENGTH_LONG).show()
         }
     }
 
-    private fun formatBytes(value: Long): String {
-        if (value < 1024) return "$value B"
-        val kb = value / 1024.0
-        if (kb < 1024) return String.format("%.1f KB", kb)
-        val mb = kb / 1024.0
-        if (mb < 1024) return String.format("%.1f MB", mb)
-        return String.format("%.2f GB", mb / 1024.0)
+    private fun shareDownloadedFile(id: Long) {
+        try {
+            val uri = downloadManager.getUriForDownloadedFile(id)
+            if (uri == null) {
+                Toast.makeText(this, "Downloaded file could not be located", Toast.LENGTH_LONG).show()
+                return
+            }
+            val share = Intent(Intent.ACTION_SEND).apply {
+                type = contentResolver.getType(uri) ?: "*/*"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(share, "Share downloaded file"))
+        } catch (_: Exception) {
+            Toast.makeText(this, "Could not share this file", Toast.LENGTH_LONG).show()
+        }
     }
+}
+
+private fun searchMatches(row: DownloadRow, query: String): Boolean =
+    query.isBlank() || row.title.contains(query, ignoreCase = true) || row.url.contains(query, ignoreCase = true)
+
+private fun sanitizeFileName(input: String): String =
+    input.replace(Regex("[\\\\/:*?""<>|]"), "_")
+        .replace(Regex("[\\p{Cntrl}]"), "_")
+        .trim()
+        .take(150)
+        .ifBlank { "download.bin" }
+
+private fun formatBytes(value: Long): String {
+    if (value < 1024) return "$value B"
+    val kb = value / 1024.0
+    if (kb < 1024) return String.format("%.1f KB", kb)
+    val mb = kb / 1024.0
+    if (mb < 1024) return String.format("%.1f MB", mb)
+    return String.format("%.2f GB", mb / 1024.0)
 }
