@@ -55,7 +55,85 @@ val syncFeatherBrowser = tasks.register<Sync>("syncFeatherBrowser") {
     into(layout.buildDirectory.dir("generated/feather"))
 }
 
-tasks.named("preBuild").configure { dependsOn(syncFeatherBrowser) }
+val patchFeatherPopupBlocker = tasks.register("patchFeatherPopupBlocker") {
+    dependsOn(syncFeatherBrowser)
+    doLast {
+        val settingsFile = layout.buildDirectory.file("generated/feather/java/com/example/ui/components/SettingsDialog.kt").get().asFile
+        check(settingsFile.exists()) { "Feather SettingsDialog.kt was not copied" }
+        var settingsSource = settingsFile.readText()
+        val contextAnchor = "    val context = LocalContext.current"
+        if (!settingsSource.contains("var popupBlockerEnabled by remember")) {
+            check(settingsSource.contains(contextAnchor)) { "Could not find SettingsDialog context anchor" }
+            settingsSource = settingsSource.replace(
+                contextAnchor,
+                contextAnchor + "\n\n    var popupBlockerEnabled by remember { mutableStateOf(context.getSharedPreferences(\"feather_browser_preferences\", 0).getBoolean(\"pref_popup_blocker_enabled\", true)) }"
+            )
+        }
+        val privacyAnchor = "                    // 3rd-Party Cookies"
+        if (!settingsSource.contains("Pop-up Blocker")) {
+            check(settingsSource.contains(privacyAnchor)) { "Could not find Privacy & Security insertion point" }
+            val popupSection = listOf(
+                "                    // Pop-up blocker",
+                "                    HorizontalDivider(",
+                "                        modifier = Modifier.padding(vertical = 12.dp),",
+                "                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)",
+                "                    )",
+                "                    Row(",
+                "                        verticalAlignment = Alignment.CenterVertically,",
+                "                        modifier = Modifier.fillMaxWidth()",
+                "                    ) {",
+                "                        Column(modifier = Modifier.weight(1f)) {",
+                "                            Text(",
+                "                                text = \"Pop-up Blocker\",",
+                "                                fontSize = 14.sp,",
+                "                                fontWeight = FontWeight.Medium,",
+                "                                color = MaterialTheme.colorScheme.onSurface",
+                "                            )",
+                "                            Text(",
+                "                                text = \"Blocks new windows opened by websites, including advertising pop-ups\",",
+                "                                fontSize = 11.5.sp,",
+                "                                color = MaterialTheme.colorScheme.onSurfaceVariant",
+                "                            )",
+                "                        }",
+                "                        Switch(",
+                "                            checked = popupBlockerEnabled,",
+                "                            onCheckedChange = { enabled ->",
+                "                                popupBlockerEnabled = enabled",
+                "                                context.getSharedPreferences(\"feather_browser_preferences\", 0)",
+                "                                    .edit().putBoolean(\"pref_popup_blocker_enabled\", enabled).apply()",
+                "                            }",
+                "                        )",
+                "                    }",
+                "",
+                "                    HorizontalDivider(",
+                "                        modifier = Modifier.padding(vertical = 12.dp),",
+                "                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)",
+                "                    )",
+                ""
+            ).joinToString("\n")
+            settingsSource = settingsSource.replace(privacyAnchor, popupSection + privacyAnchor)
+        }
+        settingsFile.writeText(settingsSource)
+
+        val webViewFile = layout.buildDirectory.file("generated/feather/java/com/example/ui/components/WebViewContainer.kt").get().asFile
+        check(webViewFile.exists()) { "Feather WebViewContainer.kt was not copied" }
+        var webViewSource = webViewFile.readText()
+        val popupAnchor = "                                // User-initiated target=_blank links should become real"
+        if (!webViewSource.contains("val popupBlockerEnabled = ctx.getSharedPreferences")) {
+            check(webViewSource.contains(popupAnchor)) { "Could not find WebView popup handler insertion point" }
+            val popupCheck = listOf(
+                "                                val popupBlockerEnabled = ctx.getSharedPreferences(\"feather_browser_preferences\", Context.MODE_PRIVATE)",
+                "                                    .getBoolean(\"pref_popup_blocker_enabled\", true)",
+                "                                if (popupBlockerEnabled) return false",
+                popupAnchor
+            ).joinToString("\n")
+            webViewSource = webViewSource.replace(popupAnchor, popupCheck)
+        }
+        webViewFile.writeText(webViewSource)
+    }
+}
+
+tasks.named("preBuild").configure { dependsOn(patchFeatherPopupBlocker) }
 
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
