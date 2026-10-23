@@ -89,7 +89,7 @@ private data class DownloadRow(
         get() = if (total > 0L) ((downloaded * 100L) / total).toInt().coerceIn(0, 100) else 0
     val isActive: Boolean get() = status == "Downloading" || status == "Queued" || status == "Paused by Android"
     val isWaiting: Boolean get() = status == "Waiting in queue"
-    val isBusy: Boolean get() = isActive || isWaiting
+    val isBusy: Boolean get() = isActive || isWaiting || status == "Paused"
     val isComplete: Boolean get() = status == "Complete"
     val isProblem: Boolean get() = status == "Failed" || status == "Record unavailable" || status == "Cancelled"
 }
