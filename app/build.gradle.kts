@@ -62,7 +62,7 @@ val patchFeatherPopupBlocker = tasks.register("patchFeatherPopupBlocker") {
         check(settingsFile.exists()) { "Feather SettingsDialog.kt was not copied" }
         var settingsSource = settingsFile.readText()
         val contextAnchor = "    val context = LocalContext.current"
-        if (!settingsSource.contains("popupBlockerEnabled")) {
+        if (!settingsSource.contains("var popupBlockerEnabled by remember")) {
             check(settingsSource.contains(contextAnchor)) { "Could not find SettingsDialog context anchor" }
             settingsSource = settingsSource.replace(
                 contextAnchor,
