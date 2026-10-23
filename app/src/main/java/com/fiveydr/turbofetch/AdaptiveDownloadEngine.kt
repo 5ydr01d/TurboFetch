@@ -128,6 +128,7 @@ internal class AdaptiveDownloadEngine(
         if (fallbackToSingleStream) {
             return singleStream.download(sourceUrl, destination, control, onProgress)
         }
+        throw IOException("Segmented download ended without a result")
     }
 
     private data class Probe(val total: Long, val etag: String?, val lastModified: String?)
