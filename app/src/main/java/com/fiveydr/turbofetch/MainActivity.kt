@@ -53,6 +53,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -78,11 +79,14 @@ private data class DownloadRow(
     val status: String,
     val downloaded: Long,
     val total: Long,
-    val reason: String = ""
+    val reason: String = "",
+    val createdAt: Long = id
 ) {
     val percent: Int
         get() = if (total > 0L) ((downloaded * 100L) / total).toInt().coerceIn(0, 100) else 0
     val isActive: Boolean get() = status == "Downloading" || status == "Queued" || status == "Paused by Android"
+    val isWaiting: Boolean get() = status == "Waiting in queue"
+    val isBusy: Boolean get() = isActive || isWaiting
     val isComplete: Boolean get() = status == "Complete"
     val isProblem: Boolean get() = status == "Failed" || status == "Record unavailable"
 }
@@ -146,16 +150,21 @@ class MainActivity : ComponentActivity() {
         var filter by remember { mutableStateOf(DownloadFilter.All) }
         var rows by remember { mutableStateOf(emptyList<DownloadRow>()) }
         var loading by remember { mutableStateOf(true) }
+        var maxConcurrent by remember {
+            mutableIntStateOf(preferences.getInt("max_concurrent_downloads", 3).coerceIn(1, 5))
+        }
 
         LaunchedEffect(Unit) {
             while (true) {
+                pumpQueue()
                 rows = loadRows()
                 loading = false
-                delay(if (rows.any { it.isActive }) 1500L else 5000L)
+                delay(if (rows.any { it.isBusy }) 1500L else 5000L)
             }
         }
 
         val activeCount = rows.count { it.isActive }
+        val waitingCount = rows.count { it.isWaiting }
         val completedCount = rows.count { it.isComplete }
         val visibleRows = rows.filter { row ->
             val matchesSearch = search.isBlank() ||
@@ -163,7 +172,7 @@ class MainActivity : ComponentActivity() {
                 row.url.contains(search, ignoreCase = true)
             val matchesFilter = when (filter) {
                 DownloadFilter.All -> true
-                DownloadFilter.Active -> row.isActive
+                DownloadFilter.Active -> row.isBusy
                 DownloadFilter.Complete -> row.isComplete
                 DownloadFilter.Problems -> row.isProblem || row.status == "Failed"
             }
@@ -243,7 +252,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     AppTab.Downloads -> {
-                        SectionHeader("Download manager", "$activeCount active · $completedCount complete")
+                        SectionHeader("Download manager", "$activeCount active · $waitingCount waiting · $completedCount complete")
                         OutlinedTextField(
                             value = search,
                             onValueChange = { search = it },
@@ -348,13 +357,31 @@ class MainActivity : ComponentActivity() {
                                     )
                                     Text("Adjust text for comfortable reading.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
+                                HorizontalDivider()
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Simultaneous downloads", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                                        Text("$maxConcurrent", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    Slider(
+                                        value = maxConcurrent.toFloat(),
+                                        onValueChange = { value ->
+                                            maxConcurrent = value.toInt().coerceIn(1, 5)
+                                            preferences.edit().putInt("max_concurrent_downloads", maxConcurrent).apply()
+                                            pumpQueue()
+                                        },
+                                        valueRange = 1f..5f,
+                                        steps = 3
+                                    )
+                                    Text("Limits downloads started by TurboFetch. Lowering this value won't interrupt transfers already running.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         }
                         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Privacy by design", style = MaterialTheme.typography.titleMedium)
                                 Text("No advertising SDKs or analytics SDKs. Download history is stored locally on this device.", style = MaterialTheme.typography.bodyMedium)
-                                Text("Browser integration and advanced multi-connection downloads are planned for a later phase.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("The current queue uses Android DownloadManager for transfers. Explicit pause/resume and segmented downloads require a separate engine and are not yet available.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         Spacer(Modifier.height(8.dp))
@@ -521,9 +548,11 @@ class MainActivity : ComponentActivity() {
                         OutlinedButton(onClick = onShare, modifier = Modifier.weight(1f)) { Text("Share") }
                     } else if (row.isProblem || row.status == "Cancelled") {
                         Button(onClick = onRetry, modifier = Modifier.weight(1f)) { Text("Retry") }
+                    } else if (row.isWaiting) {
+                        Text("Waiting for a free download slot", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
                     }
                     OutlinedButton(onClick = onDismiss) {
-                        Text(if (row.isActive) "Cancel" else "Dismiss")
+                        Text(if (row.isBusy) "Cancel" else "Dismiss")
                     }
                 }
             }
@@ -546,22 +575,13 @@ class MainActivity : ComponentActivity() {
             return
         }
         try {
-            val baseName = fileNameFrom(uri)
-            val title = uniqueTitle(baseName, existing)
-            val request = DownloadManager.Request(uri)
-                .setTitle(title)
-                .setDescription("Downloading with TurboFetch")
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setAllowedOverMetered(true)
-                .setAllowedOverRoaming(false)
-                .setDestinationUri(Uri.fromFile(File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), title)))
-            request.allowScanningByMediaScanner()
-            val id = downloadManager.enqueue(request)
-            saveId(id, cleanUrl, title)
-            Toast.makeText(this, "Download added to queue", Toast.LENGTH_SHORT).show()
+            val title = uniqueTitle(fileNameFrom(uri), existing)
+            addToQueue(cleanUrl, title, "Downloading with TurboFetch")
+            pumpQueue()
+            Toast.makeText(this, "Added to TurboFetch queue", Toast.LENGTH_SHORT).show()
             onSuccess()
         } catch (error: Exception) {
-            Toast.makeText(this, "Could not start download: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Could not queue download: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -585,10 +605,95 @@ class MainActivity : ComponentActivity() {
         return "$stem ($n)$ext"
     }
 
-    private fun saveId(id: Long, url: String, title: String) {
+    private fun addToQueue(url: String, title: String, description: String) {
         val all = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
-        all.put(JSONObject().put("id", id).put("url", url).put("title", title))
+        val usedIds = (0 until all.length()).mapNotNull { all.optJSONObject(it)?.optLong("id") }.toSet()
+        var localId = -System.currentTimeMillis().coerceAtLeast(1L)
+        while (localId in usedIds) localId--
+        val createdAt = System.currentTimeMillis()
+        all.put(
+            JSONObject()
+                .put("id", localId)
+                .put("url", url)
+                .put("title", title)
+                .put("phase", "waiting")
+                .put("description", description)
+                .put("createdAt", createdAt)
+        )
         preferences.edit().putString("downloads", all.toString()).apply()
+    }
+
+    private fun buildRequest(uri: Uri, title: String, description: String): DownloadManager.Request {
+        val request = DownloadManager.Request(uri)
+            .setTitle(title)
+            .setDescription(description)
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setAllowedOverMetered(true)
+            .setAllowedOverRoaming(false)
+            .setDestinationUri(
+                Uri.fromFile(
+                    File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), title)
+                )
+            )
+        request.allowScanningByMediaScanner()
+        return request
+    }
+
+    private fun countManagedActive(saved: JSONArray): Int {
+        var count = 0
+        for (i in 0 until saved.length()) {
+            val item = saved.optJSONObject(i) ?: continue
+            if (item.optString("phase") == "waiting" || item.optString("phase") == "failed-local") continue
+            val id = item.optLong("id")
+            if (id <= 0L) continue
+            val cursor = downloadManager.query(DownloadManager.Query().setFilterById(id))
+            cursor.use {
+                if (it != null && it.moveToFirst()) {
+                    val status = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                    if (status == DownloadManager.STATUS_PENDING ||
+                        status == DownloadManager.STATUS_RUNNING ||
+                        status == DownloadManager.STATUS_PAUSED
+                    ) count++
+                }
+            }
+        }
+        return count
+    }
+
+    private fun pumpQueue() {
+        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+        val limit = preferences.getInt("max_concurrent_downloads", 3).coerceIn(1, 5)
+        val managedActive = countManagedActive(saved)
+        val waitingItems = mutableListOf<JSONObject>()
+        for (i in 0 until saved.length()) {
+            val item = saved.optJSONObject(i) ?: continue
+            if (item.optString("phase") == "waiting") waitingItems.add(item)
+        }
+        val idsToStart = selectQueuedIds(waitingItems.map { it.optLong("id") }, managedActive, limit).toSet()
+        var changed = false
+        var activeAfterStart = managedActive
+        for (item in waitingItems) {
+            if (item.optLong("id") !in idsToStart) continue
+            val url = item.optString("url")
+            val uri = runCatching { Uri.parse(url) }.getOrNull()
+            if (uri == null || uri.host.isNullOrBlank() || (uri.scheme != "https" && uri.scheme != "http")) {
+                item.put("phase", "failed-local").put("reason", "Invalid or unsupported URL")
+                changed = true
+                continue
+            }
+            try {
+                val title = item.optString("title", "download.bin")
+                val id = downloadManager.enqueue(buildRequest(uri, title, item.optString("description", "Downloading with TurboFetch")))
+                item.put("id", id).put("phase", "managed").put("reason", "")
+                activeAfterStart++
+                changed = true
+            } catch (error: Exception) {
+                item.put("phase", "failed-local")
+                    .put("reason", "Could not start: ${error.message ?: "unknown error"}")
+                changed = true
+            }
+        }
+        if (changed) preferences.edit().putString("downloads", saved.toString()).apply()
     }
 
     private fun removeId(id: Long) {
@@ -609,6 +714,16 @@ class MainActivity : ComponentActivity() {
             val id = item.optLong("id")
             val url = item.optString("url")
             val title = item.optString("title", "Download")
+            val phase = item.optString("phase", "managed")
+            val createdAt = item.optLong("createdAt", id)
+            if (phase == "waiting") {
+                result.add(DownloadRow(id, title, url, "Waiting in queue", 0, 0, "", createdAt))
+                continue
+            }
+            if (phase == "failed-local") {
+                result.add(DownloadRow(id, title, url, "Failed", 0, 0, item.optString("reason", "Could not start download"), createdAt))
+                continue
+            }
             val cursor = downloadManager.query(DownloadManager.Query().setFilterById(id))
             cursor.use {
                 if (it != null && it.moveToFirst()) {
@@ -629,23 +744,24 @@ class MainActivity : ComponentActivity() {
                         statusValue == DownloadManager.STATUS_PAUSED -> "Paused by Android · reason code $reasonValue"
                         else -> ""
                     }
-                    result.add(DownloadRow(id, title, url, status, downloaded, total, reason))
+                    result.add(DownloadRow(id, title, url, status, downloaded, total, reason, createdAt))
                 } else {
-                    result.add(DownloadRow(id, title, url, "Record unavailable", 0, 0, "Android no longer exposes this download record. The history entry was kept."))
+                    result.add(DownloadRow(id, title, url, "Record unavailable", 0, 0, "Android no longer exposes this download record. The history entry was kept.", createdAt))
                 }
             }
         }
-        return result.sortedByDescending { it.id }
+        return result.sortedByDescending { it.createdAt }
     }
 
     private fun dismissOrCancel(row: DownloadRow, refresh: () -> Unit) {
-        if (row.isActive) {
-            downloadManager.remove(row.id)
+        if (row.isBusy) {
+            if (row.id > 0L) downloadManager.remove(row.id)
             Toast.makeText(this, "Download cancelled", Toast.LENGTH_SHORT).show()
         } else {
             Toast.makeText(this, "History entry dismissed; the file is not deleted", Toast.LENGTH_SHORT).show()
         }
         removeId(row.id)
+        pumpQueue()
         refresh()
     }
 
@@ -657,20 +773,12 @@ class MainActivity : ComponentActivity() {
         }
         try {
             val title = uniqueTitle(row.title, existing)
-            val request = DownloadManager.Request(uri)
-                .setTitle(title)
-                .setDescription("Retrying with TurboFetch")
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setAllowedOverMetered(true)
-                .setAllowedOverRoaming(false)
-                .setDestinationUri(Uri.fromFile(File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), title)))
-            request.allowScanningByMediaScanner()
-            val newId = downloadManager.enqueue(request)
-            saveId(newId, row.url, title)
-            Toast.makeText(this, "Retry queued", Toast.LENGTH_SHORT).show()
+            addToQueue(row.url, title, "Retrying with TurboFetch")
+            pumpQueue()
+            Toast.makeText(this, "Retry added to queue", Toast.LENGTH_SHORT).show()
             refresh()
         } catch (error: Exception) {
-            Toast.makeText(this, "Retry failed: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Retry could not be queued: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show()
         }
     }
 
