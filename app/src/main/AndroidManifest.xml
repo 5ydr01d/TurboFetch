@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <application
         android:allowBackup="true"
         android:label="TurboFetch"
@@ -16,6 +18,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <service
+            android:name=".CustomDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
         <receiver
             android:name=".DownloadCompleteReceiver"
             android:exported="false">
