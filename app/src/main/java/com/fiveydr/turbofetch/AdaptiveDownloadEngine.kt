@@ -28,17 +28,19 @@ internal class AdaptiveDownloadEngine(
         sourceUrl: String,
         destination: File,
         control: ResumableHttpEngine.Control = ResumableHttpEngine.Control(),
+        requestHeaders: Map<String, String> = emptyMap(),
         onProgress: (ResumableHttpEngine.Progress) -> Unit = {},
     ): ResumableHttpEngine.Result {
         val existingPart = File(destination.parentFile, destination.name + ".part")
         // A saved single-stream partial always goes through the proven validator-based resume path.
-        if (existingPart.length() > 0L) return singleStream.download(sourceUrl, destination, control, onProgress)
-        val probe = probe(sourceUrl) ?: return singleStream.download(sourceUrl, destination, control, onProgress)
-        if (probe.total < minimumSegmentedBytes || segmentCount < 2) {
-            return singleStream.download(sourceUrl, destination, control, onProgress)
+        if (existingPart.length() > 0L) return singleStream.download(sourceUrl, destination, control, requestHeaders, onProgress)
+        val probe = probe(sourceUrl, requestHeaders) ?: return singleStream.download(sourceUrl, destination, control, requestHeaders, onProgress)
+        val configuredSegments = DownloadRuntimeOptions.segmentCount.coerceIn(2, 16)
+        if (probe.total < minimumSegmentedBytes || configuredSegments < 2) {
+            return singleStream.download(sourceUrl, destination, control, requestHeaders, onProgress)
         }
-        val count = minOf(segmentCount, maxOf(2, ((probe.total + minimumSegmentedBytes - 1) / minimumSegmentedBytes).toInt()))
-            .coerceAtMost(8)
+        val count = minOf(configuredSegments, maxOf(2, ((probe.total + minimumSegmentedBytes - 1) / minimumSegmentedBytes).toInt()))
+            .coerceAtMost(16)
         val scratch = (0 until count).map { File(destination.parentFile, destination.name + ".segment-" + it) }
         val manifest = File(destination.parentFile, destination.name + ".segments.properties")
         val saved = Properties()
@@ -70,7 +72,7 @@ internal class AdaptiveDownloadEngine(
                 val end = probe.total * (index + 1) / count - 1
                 executor.submit(Callable {
                     var reportedForSegment = scratch[index].length()
-                    fetchRange(sourceUrl, scratch[index], start, end, probe, control, activeConnections) { current ->
+                    fetchRange(sourceUrl, scratch[index], start, end, probe, requestHeaders, control, activeConnections) { current ->
                         val delta = (current - reportedForSegment).coerceAtLeast(0L)
                         reportedForSegment = current
                         val totalDone = aggregateBytes.addAndGet(delta)
@@ -130,23 +132,24 @@ internal class AdaptiveDownloadEngine(
             }
         }
         if (fallbackToSingleStream) {
-            return singleStream.download(sourceUrl, destination, control, onProgress)
+            return singleStream.download(sourceUrl, destination, control, requestHeaders, onProgress)
         }
         throw IOException("Segmented download ended without a result")
     }
 
     private data class Probe(val total: Long, val etag: String?, val lastModified: String?)
 
-    private fun probe(sourceUrl: String): Probe? {
+    private fun probe(sourceUrl: String, requestHeaders: Map<String, String>): Probe? {
         var connection: HttpURLConnection? = null
         return try {
-            connection = (URL(sourceUrl).openConnection() as HttpURLConnection).apply {
+            connection = DownloadRuntimeOptions.openConnection(sourceUrl).apply {
                 connectTimeout = 12_000
                 readTimeout = 12_000
                 requestMethod = "GET"
                 setRequestProperty("Range", "bytes=0-0")
                 setRequestProperty("Accept-Encoding", "identity")
                 setRequestProperty("User-Agent", "TurboFetch/0.3")
+                DownloadRuntimeOptions.applyHeaders(this, requestHeaders)
                 connect()
             }
             if (connection.responseCode != HttpURLConnection.HTTP_PARTIAL) return null
@@ -177,6 +180,7 @@ internal class AdaptiveDownloadEngine(
         start: Long,
         end: Long,
         probe: Probe,
+        requestHeaders: Map<String, String>,
         control: ResumableHttpEngine.Control,
         activeConnections: MutableSet<HttpURLConnection>,
         onBytes: (Long) -> Unit,
@@ -191,7 +195,7 @@ internal class AdaptiveDownloadEngine(
         if (savedLength == expectedLength) return
         val requestStart = start + savedLength
         try {
-            connection = (URL(sourceUrl).openConnection() as HttpURLConnection).apply {
+            connection = DownloadRuntimeOptions.openConnection(sourceUrl).apply {
                 connectTimeout = 15_000
                 readTimeout = 20_000
                 requestMethod = "GET"
@@ -200,6 +204,7 @@ internal class AdaptiveDownloadEngine(
                 setRequestProperty("User-Agent", "TurboFetch/0.3")
                 val validator = probe.etag?.takeIf { it.isNotBlank() } ?: probe.lastModified
                 if (!validator.isNullOrBlank()) setRequestProperty("If-Range", validator)
+                DownloadRuntimeOptions.applyHeaders(this, requestHeaders)
             }
             activeConnections.add(connection)
             connection.connect()
@@ -227,6 +232,7 @@ internal class AdaptiveDownloadEngine(
                         val read = input.read(buffer)
                         if (read < 0) break
                         if (read == 0) continue
+                        DownloadRuntimeOptions.throttle(read)
                         output.write(buffer, 0, read)
                         current += read
                         onBytes(current)
