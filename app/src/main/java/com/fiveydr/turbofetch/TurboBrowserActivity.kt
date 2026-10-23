@@ -99,7 +99,7 @@ class TurboBrowserActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(3), dp(4), dp(3), dp(4))
         }
-        tabsScroll.addView(tabStrip, android.widget.ScrollView.LayoutParams(-1, -2))
+        tabsScroll.addView(tabStrip, ViewGroup.LayoutParams(-1, -2))
         browsingArea.addView(tabsScroll, LinearLayout.LayoutParams(dp(88), 0, 1f))
 
         webContainer = FrameLayout(this)
@@ -272,7 +272,7 @@ class TurboBrowserActivity : ComponentActivity() {
     private fun findInPage() {
         val field = EditText(this).apply {
             hint = "Find text on this page"
-            singleLine = true
+            setSingleLine(true)
         }
         AlertDialog.Builder(this)
             .setTitle("Find in page")
