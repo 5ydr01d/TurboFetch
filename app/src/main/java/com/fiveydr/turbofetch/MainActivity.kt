@@ -518,7 +518,7 @@ class MainActivity : ComponentActivity() {
                     if (row.isComplete) {
                         Button(onClick = onOpen, modifier = Modifier.weight(1f)) { Text("Open") }
                         OutlinedButton(onClick = onShare, modifier = Modifier.weight(1f)) { Text("Share") }
-                    } else if (row.status == "Failed" || row.status == "Cancelled") {
+                    } else if (row.isProblem || row.status == "Cancelled") {
                         Button(onClick = onRetry, modifier = Modifier.weight(1f)) { Text("Retry") }
                     }
                     OutlinedButton(onClick = onDismiss) {
