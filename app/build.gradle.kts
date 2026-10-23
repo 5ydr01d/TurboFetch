@@ -5,6 +5,11 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val ciDebugKeystorePath = providers.environmentVariable("TURBOFETCH_DEBUG_KEYSTORE_PATH").orNull
+val ciDebugStorePassword = providers.environmentVariable("TURBOFETCH_DEBUG_STORE_PASSWORD").orNull
+val ciDebugKeyAlias = providers.environmentVariable("TURBOFETCH_DEBUG_KEY_ALIAS").orNull
+val ciDebugKeyPassword = providers.environmentVariable("TURBOFETCH_DEBUG_KEY_PASSWORD").orNull
+
 android {
     namespace = "com.example"
     compileSdk = 35
@@ -15,6 +20,17 @@ android {
         targetSdk = 35
         versionCode = 6
         versionName = "0.4.0"
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            if (!ciDebugKeystorePath.isNullOrBlank()) {
+                storeFile = file(ciDebugKeystorePath)
+                storePassword = requireNotNull(ciDebugStorePassword)
+                keyAlias = requireNotNull(ciDebugKeyAlias)
+                keyPassword = requireNotNull(ciDebugKeyPassword)
+            }
+        }
     }
 
     buildFeatures {
