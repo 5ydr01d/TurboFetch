@@ -58,6 +58,7 @@ internal class AdaptiveDownloadEngine(
         }
         val aggregateBytes = AtomicLong(scratch.sumOf { it.length() })
         var preserveScratch = false
+        var fallbackToSingleStream = false
         val startedAt = System.nanoTime()
         val executor = Executors.newFixedThreadPool(count)
         try {
@@ -98,15 +99,24 @@ internal class AdaptiveDownloadEngine(
             onProgress(ResumableHttpEngine.Progress(probe.total, probe.total, 0L, false))
             return ResumableHttpEngine.Result(destination, destination.length(), false, probe.etag, probe.lastModified)
         } catch (error: Exception) {
-            // Preserve complete segment chunks on a user pause so Resume continues at each saved
-            // segment offset. Network/server failures and cancellation discard them safely.
+            // Future.get() wraps worker failures; unwrap it before classifying the failure.
             val cause = error.cause ?: error
             preserveScratch = cause is ResumableHttpEngine.PausedException
+            val message = cause.message.orEmpty()
+            // Some hosts/CDNs accept the initial probe but later ignore or alter byte ranges.
+            // Never append/assemble such responses. Discard segment state and retry safely with
+            // the single-stream engine, which will start from byte zero when no .part exists.
+            fallbackToSingleStream = cause is IOException && (
+                message.startsWith("Server stopped honoring byte ranges") ||
+                    message.startsWith("Server returned an invalid Content-Range") ||
+                    message.startsWith("Server returned an unexpected segment range") ||
+                    message.startsWith("File changed during segmented download (ETag mismatch)")
+                )
             if (!preserveScratch) {
                 scratch.forEach { it.delete() }
                 manifest.delete()
             }
-            throw cause
+            if (!fallbackToSingleStream) throw cause
         } finally {
             executor.shutdownNow()
             // Do not let workers from a paused attempt keep writing while the next attempt resumes.
@@ -115,6 +125,9 @@ internal class AdaptiveDownloadEngine(
                 scratch.forEach { it.delete() }
                 manifest.delete()
             }
+        }
+        if (fallbackToSingleStream) {
+            return singleStream.download(sourceUrl, destination, control, onProgress)
         }
     }
 
