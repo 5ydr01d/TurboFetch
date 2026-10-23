@@ -699,6 +699,11 @@ class MainActivity : ComponentActivity() {
                     else -> "Queued"
                 }
                 val totalBytes = item.optLong("totalBytes", -1L)
+                val rawReason = item.optString("reason", "")
+                val failureType = item.optString("failureType", "")
+                val displayReason = if (phase == CustomDownloadService.PHASE_FAILED && failureType.isNotBlank() && rawReason.isNotBlank()) {
+                    "$failureType · $rawReason"
+                } else rawReason
                 result.add(
                     DownloadRow(
                         id = id,
@@ -707,7 +712,7 @@ class MainActivity : ComponentActivity() {
                         status = status,
                         downloaded = item.optLong("downloadedBytes", 0L).coerceAtLeast(0L),
                         total = totalBytes.takeIf { it > 0L } ?: 0L,
-                        reason = item.optString("reason", ""),
+                        reason = displayReason,
                         createdAt = createdAt,
                         speed = item.optLong("bytesPerSecond", 0L).coerceAtLeast(0L),
                         custom = true,
