@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -221,40 +223,17 @@ class MainActivity : ComponentActivity() {
             ) {
                 when (tab) {
                     AppTab.Home -> {
-                        HomeHeader(activeCount = activeCount, completedCount = completedCount, total = rows.size)
-                        AddDownloadCard(
-                            value = urlInput,
-                            onValueChange = { urlInput = it },
-                            onAdd = { enqueueDownload(urlInput, rows) { urlInput = ""; rows = loadRows() } }
-                        )
-                        SectionHeader("Recent downloads", "${rows.size} tracked")
-                        if (rows.isEmpty()) {
-                            EmptyState(
-                                title = "Your downloads start here",
-                                message = "Paste a direct file link above. Completed files stay in your history.",
-                                action = "Browse downloads",
-                                onAction = { tab = AppTab.Downloads }
-                            )
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier.weight(1f).fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
+                        LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            item { HomeHeader(activeCount = activeCount, completedCount = completedCount, total = rows.size) }
+                            item { AddDownloadCard(value = urlInput, onValueChange = { urlInput = it }, onAdd = { enqueueDownload(urlInput, rows) { urlInput = ""; rows = loadRows() } }) }
+                            item { SectionHeader("Recent downloads", "${rows.size} tracked") }
+                            if (rows.isEmpty()) {
+                                item { EmptyState(title = "Your downloads start here", message = "Paste a direct file link above. Completed files stay in your history.", action = "Browse downloads", onAction = { tab = AppTab.Downloads }) }
+                            } else {
                                 items(rows.take(5), key = { it.id }) { row ->
-                                    DownloadCard(
-                                        row = row,
-                                        onOpen = { openDownloadedFile(row.id) },
-                                        onShare = { shareDownloadedFile(row.id) },
-                                        onRetry = { retry(row, rows) { rows = loadRows() } },
-                                        onPauseResume = { controlDownload(row) { rows = loadRows() } },
-                                        onDismiss = { dismissOrCancel(row) { rows = loadRows() } }
-                                    )
+                                    DownloadCard(row = row, onOpen = { openDownloadedFile(row.id) }, onShare = { shareDownloadedFile(row.id) }, onRetry = { retry(row, rows) { rows = loadRows() } }, onPauseResume = { controlDownload(row) { rows = loadRows() } }, onDismiss = { dismissOrCancel(row) { rows = loadRows() } })
                                 }
-                                item {
-                                    OutlinedButton(onClick = { tab = AppTab.Downloads }, modifier = Modifier.fillMaxWidth()) {
-                                        Text("View all downloads")
-                                    }
-                                }
+                                item { OutlinedButton(onClick = { tab = AppTab.Downloads }, modifier = Modifier.fillMaxWidth()) { Text("View all downloads") } }
                             }
                         }
                     }
@@ -268,7 +247,7 @@ class MainActivity : ComponentActivity() {
                             label = { Text("Search downloads") },
                             placeholder = { Text("Filename or source URL") }
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             DownloadFilter.entries.forEach { option ->
                                 FilterChip(
                                     selected = filter == option,
@@ -519,15 +498,15 @@ class MainActivity : ComponentActivity() {
         }
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
         ) {
-            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
                         color = MaterialTheme.colorScheme.secondaryContainer,
-                        modifier = Modifier.size(42.dp)
+                        modifier = Modifier.size(36.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(iconText, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
