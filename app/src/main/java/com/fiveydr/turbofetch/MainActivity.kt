@@ -82,6 +82,7 @@ private data class DownloadRow(
     val downloaded: Long,
     val total: Long,
     val reason: String = "",
+    val technicalDetails: String = "",
     val createdAt: Long = id,
     val speed: Long = 0L,
     val custom: Boolean = false,
@@ -559,6 +560,15 @@ class MainActivity : ComponentActivity() {
                 if (row.reason.isNotBlank()) {
                     Text(row.reason, style = MaterialTheme.typography.bodySmall, color = if (row.isProblem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                if (row.isProblem && row.technicalDetails.isNotBlank()) {
+                    Text(
+                        "Technical details: ${row.technicalDetails}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 6,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (row.isComplete) {
                         Button(onClick = onOpen, modifier = Modifier.weight(1f)) { Text("Open") }
@@ -692,6 +702,7 @@ class MainActivity : ComponentActivity() {
                         downloaded = item.optLong("downloadedBytes", 0L).coerceAtLeast(0L),
                         total = totalBytes.takeIf { it > 0L } ?: 0L,
                         reason = displayReason,
+                        technicalDetails = item.optString("lastError", ""),
                         createdAt = createdAt,
                         speed = item.optLong("bytesPerSecond", 0L).coerceAtLeast(0L),
                         custom = true,
