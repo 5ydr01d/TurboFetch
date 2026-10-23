@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -218,9 +219,6 @@ class MainActivity : ComponentActivity() {
                         androidx.compose.material3.TextButton(onClick = {
                             startActivity(Intent(this@MainActivity, TurboBrowserActivity::class.java))
                         }) { Text("Browser") }
-                        androidx.compose.material3.TextButton(onClick = {
-                            startActivity(Intent(this@MainActivity, AdvancedToolsActivity::class.java))
-                        }) { Text("Tools") }
                     }
                 )
             },
@@ -404,6 +402,10 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     AppTab.Settings -> {
+                        Column(
+                            modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
                         SectionHeader("Settings", "Make TurboFetch yours")
                         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -468,6 +470,15 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                         }
+                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                            Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Advanced tools", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text("Batch links, scheduled downloads, speed limits, proxy configuration and file checksums.", style = MaterialTheme.typography.bodyMedium)
+                                Button(onClick = { startActivity(Intent(this@MainActivity, AdvancedToolsActivity::class.java)) }, modifier = Modifier.fillMaxWidth()) {
+                                    Text("Open advanced tools")
+                                }
+                            }
+                        }
                         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Privacy by design", style = MaterialTheme.typography.titleMedium)
@@ -476,6 +487,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         Spacer(Modifier.height(8.dp))
+                        }
                     }
                 }
             }
