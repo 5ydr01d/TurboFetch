@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.IBinder
 import android.provider.MediaStore
+import androidx.core.content.FileProvider
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -198,6 +199,21 @@ class CustomDownloadService : Service() {
     }
 
     private fun publishToDownloads(source: File, title: String): Uri {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            @Suppress("DEPRECATION")
+            val legacyDirectory = File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                "TurboFetch"
+            )
+            if (!legacyDirectory.exists() && !legacyDirectory.mkdirs()) {
+                throw IOException("Cannot create public Downloads/TurboFetch directory")
+            }
+            val target = File(legacyDirectory, safeName(title))
+            source.inputStream().use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
+            }
+            return FileProvider.getUriForFile(this, "$packageName.fileprovider", target)
+        }
         val resolver = contentResolver
         val mime = java.net.URLConnection.guessContentTypeFromName(title) ?: "application/octet-stream"
         val values = ContentValues().apply {
