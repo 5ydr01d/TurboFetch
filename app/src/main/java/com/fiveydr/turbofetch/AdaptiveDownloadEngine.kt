@@ -5,6 +5,8 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.io.FileInputStream
+import java.util.Properties
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
@@ -35,7 +37,26 @@ internal class AdaptiveDownloadEngine(
         val count = minOf(segmentCount, maxOf(2, ((probe.total + minimumSegmentedBytes - 1) / minimumSegmentedBytes).toInt()))
             .coerceAtMost(8)
         val scratch = (0 until count).map { File(destination.parentFile, destination.name + ".segment-" + it) }
-        val aggregateBytes = AtomicLong(0L)
+        val manifest = File(destination.parentFile, destination.name + ".segments.properties")
+        val saved = Properties()
+        if (manifest.isFile) runCatching { FileInputStream(manifest).use(saved::load) }
+        val sameTransfer = saved.getProperty("url") == sourceUrl &&
+            saved.getProperty("total") == probe.total.toString() &&
+            saved.getProperty("etag") == probe.etag.orEmpty() &&
+            saved.getProperty("lastModified") == probe.lastModified.orEmpty() &&
+            saved.getProperty("count") == count.toString()
+        if (!sameTransfer) {
+            scratch.forEach { it.delete() }
+            saved.clear()
+            saved.setProperty("url", sourceUrl)
+            saved.setProperty("total", probe.total.toString())
+            saved.setProperty("etag", probe.etag.orEmpty())
+            saved.setProperty("lastModified", probe.lastModified.orEmpty())
+            saved.setProperty("count", count.toString())
+            FileOutputStream(manifest).use { saved.store(it, "TurboFetch segmented transfer") }
+        }
+        val aggregateBytes = AtomicLong(scratch.sumOf { it.length() })
+        var preserveScratch = false
         val startedAt = System.nanoTime()
         val executor = Executors.newFixedThreadPool(count)
         try {
@@ -76,13 +97,21 @@ internal class AdaptiveDownloadEngine(
             onProgress(ResumableHttpEngine.Progress(probe.total, probe.total, 0L, false))
             return ResumableHttpEngine.Result(destination, destination.length(), false, probe.etag, probe.lastModified)
         } catch (error: Exception) {
-            // A failed segmented transfer is never presented as a complete file. Its scratch
-            // parts are discarded; a user retry starts cleanly via this adaptive path.
-            scratch.forEach { it.delete() }
-            throw (error.cause ?: error)
+            // Preserve complete segment chunks on a user pause so Resume continues at each saved
+            // segment offset. Network/server failures and cancellation discard them safely.
+            val cause = error.cause ?: error
+            preserveScratch = cause is ResumableHttpEngine.PausedException
+            if (!preserveScratch) {
+                scratch.forEach { it.delete() }
+                manifest.delete()
+            }
+            throw cause
         } finally {
             executor.shutdownNow()
-            scratch.forEach { it.delete() }
+            if (!preserveScratch) {
+                scratch.forEach { it.delete() }
+                manifest.delete()
+            }
         }
     }
 
@@ -127,12 +156,20 @@ internal class AdaptiveDownloadEngine(
         onBytes: (Long) -> Unit,
     ) {
         var connection: HttpURLConnection? = null
+        val expectedLength = end - start + 1
+        val existing = target.length()
+        if (existing > expectedLength) {
+            target.delete()
+        }
+        val savedLength = target.length().coerceAtMost(expectedLength)
+        if (savedLength == expectedLength) return
+        val requestStart = start + savedLength
         try {
             connection = (URL(sourceUrl).openConnection() as HttpURLConnection).apply {
                 connectTimeout = 15_000
                 readTimeout = 20_000
                 requestMethod = "GET"
-                setRequestProperty("Range", "bytes=$start-$end")
+                setRequestProperty("Range", "bytes=$requestStart-$end")
                 setRequestProperty("Accept-Encoding", "identity")
                 setRequestProperty("User-Agent", "TurboFetch/0.3")
                 val validator = probe.etag?.takeIf { it.isNotBlank() } ?: probe.lastModified
@@ -145,7 +182,7 @@ internal class AdaptiveDownloadEngine(
             val actualRange = Regex("^bytes\\s+(\\d+)-(\\d+)/(\\d+)$", RegexOption.IGNORE_CASE)
                 .find(connection.getHeaderField("Content-Range").orEmpty())
                 ?: throw IOException("Server returned an invalid Content-Range header")
-            if (actualRange.groupValues[1].toLong() != start ||
+            if (actualRange.groupValues[1].toLong() != requestStart ||
                 actualRange.groupValues[2].toLong() != end ||
                 actualRange.groupValues[3].toLong() != probe.total
             ) throw IOException("Server returned an unexpected segment range")
@@ -153,9 +190,9 @@ internal class AdaptiveDownloadEngine(
             if (!probe.etag.isNullOrBlank() && !responseEtag.isNullOrBlank() && probe.etag != responseEtag) {
                 throw IOException("File changed during segmented download (ETag mismatch)")
             }
-            var current = 0L
+            var current = savedLength
             connection.inputStream.use { input ->
-                FileOutputStream(target, false).use { output ->
+                FileOutputStream(target, savedLength > 0L).use { output ->
                     val buffer = ByteArray(64 * 1024)
                     while (true) {
                         if (control.isCancelled()) throw ResumableHttpEngine.CancelledException(target)
@@ -170,7 +207,7 @@ internal class AdaptiveDownloadEngine(
                     output.fd.sync()
                 }
             }
-            if (current != end - start + 1) throw IOException("Segment incomplete: received $current bytes")
+            if (current != expectedLength) throw IOException("Segment incomplete: received $current bytes")
         } finally {
             connection?.disconnect()
         }
