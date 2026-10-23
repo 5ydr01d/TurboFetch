@@ -5,22 +5,20 @@ TurboFetch is an ad-free, privacy-first Android download manager built with Kotl
 ## Current development build
 
 - Redesigned Material 3 interface with Home, Downloads, Files, and Settings destinations.
-- Light and dark themes plus adjustable in-app text size.
-- Add direct HTTP/HTTPS download URLs.
-- Persistent FIFO intake queue with a configurable limit of 1–5 simultaneous app-managed downloads.
-- Queue entries have a visible waiting state and can be cancelled before they start.
-- Retries are returned to the app-managed queue instead of bypassing its concurrency limit.
-- A DownloadManager completion receiver advances queued items without requiring the main screen to be visible.
-- Download cards show status, progress, transferred bytes, and file-type labels.
-- Search download history and filter by active, completed, or problematic downloads.
-- Completed downloads offer Open and Share actions.
-- Dismissal removes the in-app history entry; it does not intentionally delete the downloaded file.
-- Filename sanitization and collision avoidance against tracked history.
-- Download history metadata and UI preferences are stored locally.
-- No advertising SDKs or analytics SDKs are included.
-- CI runs unit tests and assembles a debug APK on pushes and pull requests to `main`. APK artifacts published from `main` use a persistent signing key configured through GitHub Actions secrets; see [the signing setup guide](docs/CI_DEBUG_SIGNING.md).
+- Light/dark themes and adjustable in-app text size.
+- Persistent FIFO queue with configurable concurrency from 1–5.
+- New downloads use TurboFetch's custom HTTP engine and foreground service rather than Android DownloadManager.
+- Safe partial-file resume using HTTP Range and If-Range when the server provides a usable ETag or Last-Modified validator.
+- Pause, resume, cancel, retry, queue recovery, and persisted transfer progress.
+- Compact download cards show status, percentage, transferred/total bytes, live speed, ETA when calculable, and file-type labels.
+- Completed files are published to the public Downloads/TurboFetch folder and offer Open/Share actions.
+- Dismissing history does not intentionally delete the downloaded file.
+- Legacy DownloadManager history remains readable; queued-but-not-started entries are migrated when the custom service starts.
+- Search and filter download history; no advertising or analytics SDKs.
+- CI runs unit tests and assembles a debug APK on pushes and pull requests to `main`. Main-branch APKs use the persistent signing key configured through GitHub Actions secrets; see [the signing setup guide](docs/CI_DEBUG_SIGNING.md).
 
-Downloads are saved to the public Downloads directory. The current implementation supports direct HTTP/HTTPS file URLs and relies on Android's DownloadManager for the actual transfer. The app-managed concurrency limit controls how many entries TurboFetch submits to DownloadManager at once; lowering the limit does not interrupt transfers already running. Android remains responsible for retries and transfer behavior. Explicit pause/resume, segmented/multi-connection downloads, a built-in browser, torrent support, and media extraction are not implemented yet. As with any Android broadcast-based background behavior, the completion-triggered queue advance still needs real-device validation across Android versions and OEM battery-management settings.
+**Important limitations:** resumability depends on server support and validators; some URLs will have to restart from zero. Segmented/multi-connection downloads and a built-in browser are not implemented. The custom foreground service, background recovery, and OEM battery-management behavior still need physical-device testing. Android places execution limits on long-running data-sync foreground services, so very long transfers need specific validation on Android 14/15+.
+
 
 ## Build and test
 
@@ -35,10 +33,10 @@ After a successful main-branch build, the workflow uploads `TurboFetch-debug-apk
 
 ## Roadmap
 
-1. Add power-user queue controls and automated queue-policy tests.
-2. Evaluate a custom HTTP engine for genuine pause/resume, robust retry, safe HTTP Range resume, and optional multi-connection transfers.
-3. Improve file browsing, destination selection, and filename/MIME detection.
-4. Evaluate browser integration and link capture after core transfer behavior is dependable.
+1. Verify pause/resume, process death, reboot recovery, duplicate filenames, and large files on physical devices.
+2. Add download destination controls, safer filename/MIME detection, and richer error diagnostics.
+3. Add optional segmented/multi-connection transfers after single-stream resume is stable.
+4. Add browser integration and link capture after core transfer behavior is dependable.
 5. Evaluate torrent support separately.
 
 ## Privacy and limitations
