@@ -10,6 +10,7 @@ import java.util.Properties
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -60,6 +61,7 @@ internal class AdaptiveDownloadEngine(
         var preserveScratch = false
         var fallbackToSingleStream = false
         val startedAt = System.nanoTime()
+        val activeConnections = ConcurrentHashMap.newKeySet<HttpURLConnection>()
         val executor = Executors.newFixedThreadPool(count)
         try {
             val futures = (0 until count).map { index ->
@@ -67,7 +69,7 @@ internal class AdaptiveDownloadEngine(
                 val end = probe.total * (index + 1) / count - 1
                 executor.submit(Callable {
                     var reportedForSegment = scratch[index].length()
-                    fetchRange(sourceUrl, scratch[index], start, end, probe, control) { current ->
+                    fetchRange(sourceUrl, scratch[index], start, end, probe, control, activeConnections) { current ->
                         val delta = (current - reportedForSegment).coerceAtLeast(0L)
                         reportedForSegment = current
                         val totalDone = aggregateBytes.addAndGet(delta)
@@ -117,8 +119,9 @@ internal class AdaptiveDownloadEngine(
             if (!fallbackToSingleStream) throw cause
         } finally {
             executor.shutdownNow()
-            // Read/connect timeouts bound network workers; wait for them to stop before deleting
-            // scratch files or starting the fallback transfer.
+            // Explicitly close sockets so a slow segment worker cannot keep writing while fallback
+            // starts. Then wait for workers before deleting scratch files.
+            activeConnections.forEach { runCatching { it.disconnect() } }
             runCatching { executor.awaitTermination(25, TimeUnit.SECONDS) }
             if (!preserveScratch) {
                 scratch.forEach { it.delete() }
@@ -169,6 +172,7 @@ internal class AdaptiveDownloadEngine(
         end: Long,
         probe: Probe,
         control: ResumableHttpEngine.Control,
+        activeConnections: MutableSet<HttpURLConnection>,
         onBytes: (Long) -> Unit,
     ) {
         var connection: HttpURLConnection? = null
@@ -190,8 +194,9 @@ internal class AdaptiveDownloadEngine(
                 setRequestProperty("User-Agent", "TurboFetch/0.3")
                 val validator = probe.etag?.takeIf { it.isNotBlank() } ?: probe.lastModified
                 if (!validator.isNullOrBlank()) setRequestProperty("If-Range", validator)
-                connect()
             }
+            activeConnections.add(connection)
+            connection.connect()
             if (connection.responseCode != HttpURLConnection.HTTP_PARTIAL) {
                 throw IOException("Server stopped honoring byte ranges; retry to use single-stream mode")
             }
@@ -225,7 +230,10 @@ internal class AdaptiveDownloadEngine(
             }
             if (current != expectedLength) throw IOException("Segment incomplete: received $current bytes")
         } finally {
-            connection?.disconnect()
+            connection?.let {
+                activeConnections.remove(it)
+                it.disconnect()
+            }
         }
     }
 }
