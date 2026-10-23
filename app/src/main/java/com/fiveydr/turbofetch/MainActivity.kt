@@ -744,11 +744,26 @@ class MainActivity : ComponentActivity() {
             }
             Toast.makeText(this, "Download cancelled", Toast.LENGTH_SHORT).show()
         } else {
+            if (row.custom && !row.isComplete) deletePartialTransfer(row.id)
             removeId(row.id)
             Toast.makeText(this, "History entry dismissed; the downloaded file is not deleted", Toast.LENGTH_SHORT).show()
         }
         pumpQueue()
         refresh()
+    }
+
+    private fun deletePartialTransfer(id: Long) {
+        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+        for (i in 0 until saved.length()) {
+            val item = saved.optJSONObject(i) ?: continue
+            if (item.optLong("id") != id) continue
+            val destination = item.optString("destination", "")
+            if (destination.isNotBlank()) {
+                File(destination + ".part").delete()
+                File(destination + ".part.properties").delete()
+            }
+            return
+        }
     }
 
     private fun controlDownload(row: DownloadRow, refresh: () -> Unit) {
