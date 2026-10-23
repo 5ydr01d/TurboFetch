@@ -43,12 +43,14 @@ internal class AdaptiveDownloadEngine(
                 val start = probe.total * index / count
                 val end = probe.total * (index + 1) / count - 1
                 executor.submit(Callable {
+                    var reportedForSegment = 0L
                     fetchRange(sourceUrl, scratch[index], start, end, probe, control) { current ->
-                        val totalDone = completedBytes.get() + current
+                        val delta = (current - reportedForSegment).coerceAtLeast(0L)
+                        reportedForSegment = current
+                        val totalDone = aggregateBytes.addAndGet(delta)
                         val elapsed = ((System.nanoTime() - startedAt) / 1_000_000_000L).coerceAtLeast(1L)
                         onProgress(ResumableHttpEngine.Progress(totalDone, probe.total, totalDone / elapsed, false))
                     }
-                    completedBytes.addAndGet(scratch[index].length())
                 })
             }
             futures.forEach { it.get() }
