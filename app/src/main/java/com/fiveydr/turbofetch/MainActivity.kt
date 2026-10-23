@@ -143,7 +143,7 @@ class MainActivity : ComponentActivity() {
                             Text("Your queue is empty. Paste a direct file URL above to get started.")
                         } else {
                             LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 items(rows, key = { it.id }) { row ->
