@@ -251,7 +251,7 @@ class MainActivity : ComponentActivity() {
                     },
                     actions = {
                         androidx.compose.material3.TextButton(onClick = {
-                            startActivity(Intent(this@MainActivity, TurboBrowserActivity::class.java))
+                            startActivity(Intent(this@MainActivity, com.example.MainActivity::class.java))
                         }) { Text("Browser") }
                     }
                 )
@@ -332,7 +332,7 @@ class MainActivity : ComponentActivity() {
                                 title = if (search.isBlank()) "No downloads yet" else "No matching downloads",
                                 message = if (search.isBlank()) "Paste a link above or open the browser to find a file." else "Try another filename, URL, or status filter.",
                                 action = "Open browser",
-                                onAction = { startActivity(Intent(this@MainActivity, TurboBrowserActivity::class.java)) }
+                                onAction = { startActivity(Intent(this@MainActivity, com.example.MainActivity::class.java)) }
                             )
                         } else {
                             LazyColumn(

@@ -6,14 +6,18 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
+        android:name=".BrowserApplication"
         android:allowBackup="true"
+        android:hardwareAccelerated="true"
         android:label="TurboFetch"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:theme="@style/Theme.MyApplication"
         android:usesCleartextTraffic="true">
         <activity
-            android:name=".MainActivity"
+            android:name="com.fiveydr.turbofetch.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -30,9 +34,14 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
-        <activity android:name=".AdvancedToolsActivity" android:exported="false" />
-        <activity android:name=".TurboBrowserActivity" android:exported="false" />
-        <receiver android:name=".ScheduledDownloadReceiver" android:exported="false">
+        <activity
+            android:name="com.example.MainActivity"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:theme="@style/Theme.MyApplication"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
+        <receiver android:name="com.fiveydr.turbofetch.ScheduledDownloadReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="com.fiveydr.turbofetch.action.SCHEDULED_DOWNLOAD" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
@@ -48,15 +57,19 @@
                 android:resource="@xml/file_paths" />
         </provider>
         <service
-            android:name=".CustomDownloadService"
+            android:name="com.fiveydr.turbofetch.CustomDownloadService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
         <receiver
-            android:name=".DownloadCompleteReceiver"
+            android:name="com.fiveydr.turbofetch.DownloadCompleteReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
             </intent-filter>
         </receiver>
+        <service
+            android:name="com.example.media.MediaPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
     </application>
 </manifest>
