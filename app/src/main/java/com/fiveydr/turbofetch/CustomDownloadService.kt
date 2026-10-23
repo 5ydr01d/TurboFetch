@@ -141,19 +141,13 @@ class CustomDownloadService : Service() {
                 }
                 throw error
             } catch (error: Exception) {
-                val message = error.message ?: "Download failed"
-                val category = when {
-                    message.contains("HTTP", ignoreCase = true) || message.contains("range", ignoreCase = true) -> "Server response"
-                    message.contains("storage", ignoreCase = true) || message.contains("file", ignoreCase = true) || message.contains("directory", ignoreCase = true) -> "Storage"
-                    message.contains("timeout", ignoreCase = true) || message.contains("connect", ignoreCase = true) || message.contains("network", ignoreCase = true) -> "Network"
-                    else -> "Transfer"
-                }
+                val details = DownloadFailureDiagnostics.describe(error)
                 updateRow(id) {
                     it.put("phase", PHASE_FAILED)
-                        .put("reason", message)
-                        .put("failureType", category)
+                        .put("reason", details.message)
+                        .put("failureType", details.category)
                         .put("failedAt", System.currentTimeMillis())
-                        .put("lastError", message.take(500))
+                        .put("lastError", details.technicalDetails)
                 }
             } finally {
                 jobs.remove(id)
