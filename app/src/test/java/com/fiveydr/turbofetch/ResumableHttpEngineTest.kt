@@ -16,7 +16,7 @@ class ResumableHttpEngineTest {
     private lateinit var server: HttpServer
     private lateinit var root: File
     private lateinit var payload: ByteArray
-    private var sawRange: String? = null
+    @Volatile private var sawRange: String? = null
 
     @Before
     fun setUp() {
