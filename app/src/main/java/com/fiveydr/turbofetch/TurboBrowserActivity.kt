@@ -237,6 +237,7 @@ class TurboBrowserActivity : ComponentActivity() {
         tabs.forEachIndexed { index, tab ->
             val label = (if (tab.incognito) "◐ " else "") + (index + 1).toString() + " · " + tab.title
             val chip = makeButton(label.take(18)) { showTab(index) }
+            chip.maxWidth = dp(78)
             chip.alpha = if (index == activeIndex) 1f else 0.65f
             chip.maxLines = 2
             chip.setOnLongClickListener {
