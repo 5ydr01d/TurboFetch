@@ -12,6 +12,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import javax.net.ssl.SSLException
 
 /**
  * Uses parallel byte ranges for large, range-capable files. Any unsupported server falls back
@@ -158,6 +159,11 @@ internal class AdaptiveDownloadEngine(
             // Without a stable validator, parallel ranges could silently combine different versions.
             if (etag.isNullOrBlank() && lastModified.isNullOrBlank()) return null
             Probe(total, etag, lastModified)
+        } catch (error: SSLException) {
+            // Do not disguise a certificate/trust failure as an unsupported range server and
+            // silently retry the same host through another engine. The diagnostic layer needs
+            // the original TLS exception to explain the actual failure.
+            throw error
         } catch (_: Exception) {
             null
         } finally {
