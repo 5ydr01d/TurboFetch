@@ -784,8 +784,14 @@ class MainActivity : ComponentActivity() {
             if (item.optLong("id") != id) continue
             val destination = item.optString("destination", "")
             if (destination.isNotBlank()) {
+                val base = File(destination)
                 File(destination + ".part").delete()
                 File(destination + ".part.properties").delete()
+                File(destination + ".segments.properties").delete()
+                base.parentFile?.listFiles()
+                    ?.filter { it.name.startsWith(base.name + ".segment-") }
+                    ?.forEach { it.delete() }
+                File(base.parentFile, base.name + ".assembling").delete()
             }
             return
         }
