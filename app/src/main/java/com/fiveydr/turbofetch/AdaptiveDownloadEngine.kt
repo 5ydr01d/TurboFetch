@@ -112,15 +112,14 @@ internal class AdaptiveDownloadEngine(
                     message.startsWith("Server returned an unexpected segment range") ||
                     message.startsWith("File changed during segmented download (ETag mismatch)")
                 )
-            if (!preserveScratch) {
-                scratch.forEach { it.delete() }
-                manifest.delete()
-            }
+            // Defer cleanup until workers have stopped; deleting segment files here can race
+            // with another worker still writing to one of them.
             if (!fallbackToSingleStream) throw cause
         } finally {
             executor.shutdownNow()
-            // Do not let workers from a paused attempt keep writing while the next attempt resumes.
-            runCatching { executor.awaitTermination(5, TimeUnit.SECONDS) }
+            // Read/connect timeouts bound network workers; wait for them to stop before deleting
+            // scratch files or starting the fallback transfer.
+            runCatching { executor.awaitTermination(25, TimeUnit.SECONDS) }
             if (!preserveScratch) {
                 scratch.forEach { it.delete() }
                 manifest.delete()
