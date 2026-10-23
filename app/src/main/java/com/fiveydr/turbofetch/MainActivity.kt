@@ -98,8 +98,8 @@ private data class DownloadRow(
 }
 
 private enum class AppTab(val label: String, val symbol: String) {
-    Home("Home", "⌂"),
-    Downloads("Downloads", "↓"),
+    Home("Downloads", "↓"),
+    Downloads("Queue", "☷"),
     Files("Files", "▤"),
     Settings("Settings", "⚙")
 }
@@ -201,14 +201,26 @@ class MainActivity : ComponentActivity() {
             topBar = {
                 TopAppBar(
                     title = {
-                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                            Surface(
+                                shape = RoundedCornerShape(9.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(34.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text("T", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Black)
+                                }
+                            }
                             Text("TurboFetch", fontWeight = FontWeight.Bold)
-                            Text(
-                                "Fast downloads. No ads. No tracking.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                         }
+                    },
+                    actions = {
+                        androidx.compose.material3.TextButton(onClick = {
+                            startActivity(Intent(this@MainActivity, TurboBrowserActivity::class.java))
+                        }) { Text("Browser") }
+                        androidx.compose.material3.TextButton(onClick = {
+                            startActivity(Intent(this@MainActivity, AdvancedToolsActivity::class.java))
+                        }) { Text("Tools") }
                     }
                 )
             },
@@ -231,21 +243,80 @@ class MainActivity : ComponentActivity() {
             ) {
                 when (tab) {
                     AppTab.Home -> {
-                        LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            item { HomeHeader(activeCount = activeCount, completedCount = completedCount, total = rows.size) }
-                            item { AdvancedToolsCard(
-                                onBrowser = { startActivity(Intent(this@MainActivity, TurboBrowserActivity::class.java)) },
-                                onTools = { startActivity(Intent(this@MainActivity, AdvancedToolsActivity::class.java)) }
-                            ) }
-                            item { AddDownloadCard(value = urlInput, onValueChange = { urlInput = it }, onAdd = { enqueueDownload(urlInput, rows) { urlInput = ""; rows = loadRows() } }) }
-                            item { SectionHeader("Recent downloads", "${rows.size} tracked") }
-                            if (rows.isEmpty()) {
-                                item { EmptyState(title = "Your downloads start here", message = "Paste a direct file link above. Completed files stay in your history.", action = "Browse downloads", onAction = { tab = AppTab.Downloads }) }
-                            } else {
-                                items(rows.take(5), key = { it.id }) { row ->
-                                    DownloadCard(row = row, onOpen = { openDownloadedFile(row.id) }, onShare = { shareDownloadedFile(row.id) }, onRetry = { retry(row, rows) { rows = loadRows() } }, onPauseResume = { controlDownload(row) { rows = loadRows() } }, onDismiss = { dismissOrCancel(row) { rows = loadRows() } })
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = urlInput,
+                                onValueChange = { urlInput = it },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                label = { Text("Download link") },
+                                placeholder = { Text("Paste URL") },
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            Button(
+                                onClick = { enqueueDownload(urlInput, rows) { urlInput = ""; rows = loadRows() } },
+                                enabled = urlInput.isNotBlank(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) { Text("↓") }
+                        }
+                        OutlinedTextField(
+                            value = search,
+                            onValueChange = { search = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Search downloads") },
+                            placeholder = { Text("Filename or URL") },
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            DownloadFilter.entries.forEach { option ->
+                                FilterChip(
+                                    selected = filter == option,
+                                    onClick = { filter = option },
+                                    label = { Text(option.label) }
+                                )
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 1.dp, bottom = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Downloads", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Text("${activeCount} active  ·  ${completedCount} completed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (loading && rows.isEmpty()) {
+                            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                                Text("Loading downloads…")
+                            }
+                        } else if (visibleRows.isEmpty()) {
+                            EmptyState(
+                                title = if (search.isBlank()) "No downloads yet" else "No matching downloads",
+                                message = if (search.isBlank()) "Paste a link above or open the browser to find a file." else "Try another filename, URL, or status filter.",
+                                action = "Open browser",
+                                onAction = { startActivity(Intent(this@MainActivity, TurboBrowserActivity::class.java)) }
+                            )
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                items(visibleRows, key = { it.id }) { row ->
+                                    DownloadCard(
+                                        row = row,
+                                        onOpen = { openDownloadedFile(row.id) },
+                                        onShare = { shareDownloadedFile(row.id) },
+                                        onRetry = { retry(row, rows) { rows = loadRows() } },
+                                        onPauseResume = { controlDownload(row) { rows = loadRows() } },
+                                        onDismiss = { dismissOrCancel(row) { rows = loadRows() } }
+                                    )
                                 }
-                                item { OutlinedButton(onClick = { tab = AppTab.Downloads }, modifier = Modifier.fillMaxWidth()) { Text("View all downloads") } }
                             }
                         }
                     }
@@ -528,10 +599,10 @@ class MainActivity : ComponentActivity() {
         }
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(8.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
         ) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 9.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
                     Surface(
                         shape = RoundedCornerShape(10.dp),
