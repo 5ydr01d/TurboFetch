@@ -4,6 +4,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val ciDebugKeystorePath = providers.environmentVariable("TURBOFETCH_DEBUG_KEYSTORE_PATH").orNull
+val ciDebugStorePassword = providers.environmentVariable("TURBOFETCH_DEBUG_STORE_PASSWORD").orNull
+val ciDebugKeyAlias = providers.environmentVariable("TURBOFETCH_DEBUG_KEY_ALIAS").orNull
+val ciDebugKeyPassword = providers.environmentVariable("TURBOFETCH_DEBUG_KEY_PASSWORD").orNull
+
 android {
     namespace = "com.fiveydr.turbofetch"
     compileSdk = 35
@@ -14,6 +19,26 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+    }
+
+    // Local builds keep Android's standard debug key. CI can provide a
+    // persistent keystore so APKs from different workflow runs can update
+    // one another instead of being signed by runner-specific keys.
+    signingConfigs {
+        getByName("debug") {
+            if (!ciDebugKeystorePath.isNullOrBlank()) {
+                storeFile = file(ciDebugKeystorePath)
+                storePassword = requireNotNull(ciDebugStorePassword) {
+                    "TURBOFETCH_DEBUG_STORE_PASSWORD is required with the CI keystore."
+                }
+                keyAlias = requireNotNull(ciDebugKeyAlias) {
+                    "TURBOFETCH_DEBUG_KEY_ALIAS is required with the CI keystore."
+                }
+                keyPassword = requireNotNull(ciDebugKeyPassword) {
+                    "TURBOFETCH_DEBUG_KEY_PASSWORD is required with the CI keystore."
+                }
+            }
+        }
     }
 
     buildFeatures { compose = true }
