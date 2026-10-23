@@ -67,6 +67,7 @@ import androidx.core.view.WindowCompat
 import kotlinx.coroutines.delay
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
@@ -554,7 +555,7 @@ class MainActivity : ComponentActivity() {
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(false)
                 .allowScanningByMediaScanner()
-                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, title)
+                .setDestinationUri(Uri.fromFile(File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), title)))
             val id = downloadManager.enqueue(request)
             saveId(id, cleanUrl, title)
             Toast.makeText(this, "Download added to queue", Toast.LENGTH_SHORT).show()
@@ -663,7 +664,7 @@ class MainActivity : ComponentActivity() {
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(false)
                 .allowScanningByMediaScanner()
-                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, title)
+                .setDestinationUri(Uri.fromFile(File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), title)))
             val newId = downloadManager.enqueue(request)
             saveId(newId, row.url, title)
             Toast.makeText(this, "Retry queued", Toast.LENGTH_SHORT).show()
