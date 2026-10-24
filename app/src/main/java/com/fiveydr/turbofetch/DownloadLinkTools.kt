@@ -34,7 +34,7 @@ internal object DownloadLinkTools {
      */
     fun transferFileName(downloadId: Long, displayName: String): String {
         val safe = displayName
-            .replace(Regex("""[\\/:*?"<>|\\p{Cntrl}]"""), "_")
+            .replace(Regex("""[\\/:*?"<>|\p{Cntrl}]"""), "_")
             .trim()
             .trim('.')
             .take(180)
