@@ -17,6 +17,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
+import java.io.EOFException
+import java.net.ConnectException
+import java.net.SocketException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import java.security.cert.CertPathValidatorException
+import javax.net.ssl.SSLException
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -25,6 +32,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -213,7 +221,7 @@ class CustomDownloadService : Service() {
         }
         val job = serviceScope.launch(start = CoroutineStart.LAZY) {
             try {
-                val result = engine.download(url, destination, control, requestHeaders) { progress ->
+                val onProgress: (ResumableHttpEngine.Progress) -> Unit = { progress ->
                     updateRow(id) {
                         it.put("downloadedBytes", progress.transferredBytes)
                             .put("totalBytes", progress.totalBytes ?: -1L)
@@ -223,6 +231,7 @@ class CustomDownloadService : Service() {
                     }
                     updateNotification()
                 }
+                val result = downloadWithAutomaticRetries(id, url, destination, control, requestHeaders, onProgress)
                 if (control.isCancelled()) {
                     result.file.delete()
                     throw ResumableHttpEngine.CancelledException(result.file)
@@ -241,6 +250,7 @@ class CustomDownloadService : Service() {
                         .put("totalBytes", result.bytes)
                         .put("bytesPerSecond", 0)
                         .put("completedAt", System.currentTimeMillis())
+                        .put("retryCount", 0)
                         .put("reason", "")
                     // Request headers are no longer needed once the transfer is complete.
                     // This drops cookies/authorization from persisted queue metadata.
@@ -276,6 +286,69 @@ class CustomDownloadService : Service() {
         }
         jobs[id] = job
         job.start()
+    }
+
+    private suspend fun downloadWithAutomaticRetries(
+        id: Long,
+        url: String,
+        destination: File,
+        control: ResumableHttpEngine.Control,
+        requestHeaders: Map<String, String>,
+        onProgress: (ResumableHttpEngine.Progress) -> Unit
+    ): ResumableHttpEngine.Result {
+        var retryAttempt = 0
+        val maximumRetries = prefs.getInt("auto_retry_count", 3).coerceIn(0, 10)
+        val initialDelayMs = prefs.getInt("auto_retry_delay_seconds", 5).coerceIn(1, 300) * 1000L
+        while (true) {
+            try {
+                return engine.download(url, destination, control, requestHeaders, onProgress)
+            } catch (error: ResumableHttpEngine.PausedException) {
+                throw error
+            } catch (error: ResumableHttpEngine.CancelledException) {
+                throw error
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (retryAttempt >= maximumRetries || !isTransientTransferFailure(error)) throw error
+                retryAttempt++
+                val backoffMs = (initialDelayMs * (1L shl (retryAttempt - 1).coerceAtMost(4))).coerceAtMost(300_000L)
+                updateRow(id) {
+                    it.put("phase", PHASE_DOWNLOADING)
+                        .put("retryCount", retryAttempt)
+                        .put("reason", "Temporary transfer failure · retry " + retryAttempt + " of " + maximumRetries +
+                            " in " + (backoffMs / 1000L) + "s")
+                }
+                updateNotification()
+                var remainingMs = backoffMs
+                while (remainingMs > 0L) {
+                    if (control.isCancelled()) throw ResumableHttpEngine.CancelledException(destination)
+                    if (control.isPaused()) throw ResumableHttpEngine.PausedException(destination)
+                    val slice = minOf(remainingMs, 250L)
+                    delay(slice)
+                    remainingMs -= slice
+                }
+            }
+        }
+    }
+
+    private fun isTransientTransferFailure(error: Throwable): Boolean {
+        val chain = generateSequence(error) { it.cause }.take(12).toList()
+        if (chain.any {
+                it is SSLException || it is CertPathValidatorException ||
+                    it.javaClass.name.contains("CertificateException", ignoreCase = true)
+            }
+        ) return false
+        val message = chain.mapNotNull { it.message }.joinToString(" ")
+        val status = Regex("""\bHTTP\s+(\d{3})\b""", RegexOption.IGNORE_CASE)
+            .find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        if (status != null) return status == 408 || status == 425 || status == 429 || status in 500..599
+        return chain.any {
+            it is SocketTimeoutException ||
+                it is ConnectException ||
+                it is UnknownHostException ||
+                it is SocketException ||
+                it is EOFException
+        }
     }
 
     private fun pause(id: Long) {
