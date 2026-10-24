@@ -125,7 +125,7 @@ internal object MediaArtifactTools {
           if (!out.has(key)) out.set(key, {url:key, title:(title || '').trim(), mimeType:mime || ''});
         } catch (_) {}
       };
-      const fileLike = /\\.(?:avif|bmp|csv|doc|docx|epub|flac|gif|jpeg|jpg|m4a|m4v|mkv|mov|mp3|mp4|ogg|pdf|png|ppt|pptx|rtf|svg|tif|tiff|txt|wav|webm|webp|xls|xlsx|odt|ods|odp|zip|rar|7z)(?:$|[?#])/i;
+      const fileLike = /\.(?:avif|bmp|csv|doc|docx|epub|flac|gif|jpeg|jpg|m4a|m4v|mkv|mov|mp3|mp4|ogg|pdf|png|ppt|pptx|rtf|svg|tif|tiff|txt|wav|webm|webp|xls|xlsx|odt|ods|odp|zip|rar|7z)(?:$|[?#])/i;
       document.querySelectorAll('a[href], img[src], img[srcset], video[src], audio[src], source[src], link[rel="download"][href]').forEach(el => {
         const tag = el.tagName.toLowerCase();
         const declaredMime = el.getAttribute('type') || '';
@@ -133,8 +133,8 @@ internal object MediaArtifactTools {
         const title = el.getAttribute('download') || el.getAttribute('alt') ||
           el.getAttribute('title') || el.getAttribute('aria-label') || '';
         if (tag === 'a' && !el.hasAttribute('download') && !fileLike.test(href) &&
-            !/^(?:image|video|audio)\\//i.test(declaredMime) &&
-            !/application\\/(?:pdf|msword|vnd\\.openxmlformats|vnd\\.ms-|vnd\\.oasis)/i.test(declaredMime)) return;
+            !/^(?:image|video|audio)\//i.test(declaredMime) &&
+            !/application\/(?:pdf|msword|vnd\.openxmlformats|vnd\.ms-|vnd\.oasis)/i.test(declaredMime)) return;
         const inferredMime = declaredMime || (tag === 'img' ? 'image/*' : tag === 'video' || tag === 'source' ? 'video/*' : tag === 'audio' ? 'audio/*' : '');
         if (tag === 'img') {
           const width = el.naturalWidth || el.width || 0;
@@ -145,7 +145,7 @@ internal object MediaArtifactTools {
           if (!el.getAttribute(attr)) return;
           add(el.getAttribute(attr), title || document.title, inferredMime);
         });
-        if (el.getAttribute('srcset')) el.getAttribute('srcset').split(',').forEach(item => add(item.trim().split(/\\s+/)[0], title || document.title, 'image/*'));
+        if (el.getAttribute('srcset')) el.getAttribute('srcset').split(',').forEach(item => add(item.trim().split(/\s+/)[0], title || document.title, 'image/*'));
       });
       document.querySelectorAll('video').forEach(v => {
         if (v.currentSrc) add(v.currentSrc, v.getAttribute('title') || document.title, 'video/*');
