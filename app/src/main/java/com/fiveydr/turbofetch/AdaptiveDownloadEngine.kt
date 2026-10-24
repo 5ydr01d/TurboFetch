@@ -202,6 +202,7 @@ internal class AdaptiveDownloadEngine(
         val savedLength = target.length().coerceAtMost(expectedLength)
         if (savedLength == expectedLength) return
         val requestStart = start + savedLength
+        val hostPermit = HostConnectionLimiter.acquire(sourceUrl)
         try {
             connection = DownloadRuntimeOptions.openConnection(sourceUrl).apply {
                 connectTimeout = 15_000
@@ -250,9 +251,13 @@ internal class AdaptiveDownloadEngine(
             }
             if (current != expectedLength) throw IOException("Segment incomplete: received $current bytes")
         } finally {
-            connection?.let {
-                activeConnections.remove(it)
-                it.disconnect()
+            try {
+                connection?.let {
+                    activeConnections.remove(it)
+                    it.disconnect()
+                }
+            } finally {
+                hostPermit.release()
             }
         }
     }
