@@ -951,7 +951,16 @@ class MainActivity : ComponentActivity() {
                 title = "${stem} ($n)$ext"
             }
             used.add(title.lowercase(Locale.ROOT))
-            DownloadQueueScheduler.add(this, url, title, description, headers)
+            try {
+                DownloadQueueScheduler.add(this, url, title, description, headers)
+            } catch (_: Exception) {
+                Toast.makeText(
+                    this,
+                    "Could not securely protect request headers; download was not queued.",
+                    Toast.LENGTH_LONG
+                ).show()
+                return
+            }
             preferences.edit().putString("last_tool_url", url).apply()
         }
         CustomDownloadService.start(this)
