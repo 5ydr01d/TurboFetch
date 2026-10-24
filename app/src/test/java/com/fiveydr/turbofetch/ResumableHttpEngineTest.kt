@@ -3,6 +3,7 @@ package com.fiveydr.turbofetch
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -24,12 +25,14 @@ class ResumableHttpEngineTest {
     @Volatile private var sawRange: String? = null
     private val ignoreRange = AtomicBoolean(false)
     private val ignoreNonProbeRanges = AtomicBoolean(false)
+    private val rejectResumeRange = AtomicBoolean(false)
     @Volatile private var running = true
 
     @Before
     fun setUp() {
         root = Files.createTempDirectory("turbofetch-engine-test").toFile()
         payload = ByteArray(512 * 1024) { (it % 251).toByte() }
+        rejectResumeRange.set(false)
         server = ServerSocket(0)
         serverThread = Thread {
             while (running) {
@@ -74,6 +77,14 @@ class ResumableHttpEngineTest {
             sawRange = rangeHeader
             val parsedRange = Regex("^bytes=(\\d+)-(\\d*)$").find(rangeHeader.orEmpty())
             val requestedRangeStart = parsedRange?.groupValues?.get(1)?.toIntOrNull()
+            if (rejectResumeRange.get() && requestedRangeStart != null && requestedRangeStart > 0) {
+                val response = "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                client.getOutputStream().apply {
+                    write(response.toByteArray(StandardCharsets.ISO_8859_1))
+                    flush()
+                }
+                return
+            }
             val range = if (
                 !ignoreRange.get() &&
                 !(ignoreNonProbeRanges.get() && requestedRangeStart != 0)
@@ -157,6 +168,27 @@ class ResumableHttpEngineTest {
         assertTrue(sawRange != null)
         assertTrue(!result.resumed)
         assertArrayEquals(payload, destination.readBytes())
+    }
+
+    @Test
+    fun restartsFromZeroWhenServerRejectsResumeWith416() {
+        val destination = File(root, "range-416.bin")
+        val partial = File(root, "range-416.bin.part")
+        val metadataFile = File(root, "range-416.bin.part.properties")
+        partial.writeBytes(payload.copyOfRange(0, 100_000))
+        val metadata = Properties().apply {
+            setProperty("url", url())
+            setProperty("etag", "\\"test-etag\\"")
+        }
+        metadataFile.outputStream().use { metadata.store(it, null) }
+        rejectResumeRange.set(true)
+
+        val result = ResumableHttpEngine().download(url(), destination)
+
+        assertFalse(result.resumed)
+        assertArrayEquals(payload, destination.readBytes())
+        assertFalse(partial.exists())
+        assertFalse(metadataFile.exists())
     }
 
     @Test
