@@ -64,28 +64,51 @@ jobs:
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
 
-      - name: Verify APK signer
+      - name: Verify APK signers
         shell: bash
         run: |
           set -euo pipefail
           apksigner="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -n "$apksigner"
-          "$apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
+          mapfile -t apks < <(find app/build/outputs/apk/debug -type f -name '*.apk' | sort)
+          test "${#apks[@]}" -ge 4
+          for apk in "${apks[@]}"; do
+            echo "Verifying $apk"
+            "$apksigner" verify --verbose --print-certs "$apk"
+          done
 
-      - name: Upload PR test APK
-        if: github.event_name == 'pull_request'
+      - name: Upload arm64 APK
+        if: always() && success()
         uses: actions/upload-artifact@v4
         with:
-          name: TurboFetch-PR-${{ github.event.pull_request.number }}-test-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: TurboFetch-arm64-v8a-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/*arm64-v8a*.apk
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload signed debug APK
-        if: github.event_name != 'pull_request'
+      - name: Upload armeabi-v7a APK
+        if: always() && success()
         uses: actions/upload-artifact@v4
         with:
-          name: TurboFetch-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: TurboFetch-armeabi-v7a-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/*armeabi-v7a*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload x86_64 APK
+        if: always() && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TurboFetch-x86_64-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/*x86_64*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload x86 APK
+        if: always() && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TurboFetch-x86-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/*x86*.apk
           if-no-files-found: error
           retention-days: 14
