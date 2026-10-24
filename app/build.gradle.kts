@@ -129,6 +129,30 @@ val patchFeatherPopupBlocker = tasks.register("patchFeatherPopupBlocker") {
             ).joinToString("\n")
             webViewSource = webViewSource.replace(popupAnchor, popupCheck)
         }
+        // Automatically scan every real Feather Browser page and persist the latest page's assets for TurboFetch Finder.
+        val pageFinishedAnchor = "                                view?.title?.let {\n                                    viewModel.onTitleChanged(tabId, it)\n                                }"
+        if (!webViewSource.contains("turbofetch_artifact_scan_json")) {
+            check(webViewSource.contains(pageFinishedAnchor)) { "Could not find Feather onPageFinished insertion point for automatic artifact scan" }
+            val autoScan = listOf(
+                "                                // TurboFetch: automatically collect exposed assets after every browser navigation.",
+                "                                if (url != null && (url.startsWith(\"https://\") || url.startsWith(\"http://\"))) {",
+                "                                    val scanScript = com.fiveydr.turbofetch.MediaArtifactTools.PAGE_SCAN_SCRIPT",
+                "                                    view?.evaluateJavascript(scanScript) { rawResult ->",
+                "                                        runCatching {",
+                "                                            val decoded = org.json.JSONTokener(rawResult ?: \"null\").nextValue() as? String ?: return@runCatching",
+                "                                            val parsed = org.json.JSONObject(decoded)",
+                "                                            val prefs = view?.context?.getSharedPreferences(\"turbofetch_browser_artifacts\", android.content.Context.MODE_PRIVATE) ?: return@runCatching",
+                "                                            prefs.edit()",
+                "                                                .putString(\"turbofetch_artifact_scan_url\", parsed.optString(\"page\", url))",
+                "                                                .putString(\"turbofetch_artifact_scan_json\", decoded)",
+                "                                                .putLong(\"turbofetch_artifact_scan_time\", System.currentTimeMillis())",
+                "                                                .apply()",
+                "                                        }",
+                "                                    }",
+                "                                }"
+            ).joinToString("\\n")
+            webViewSource = webViewSource.replace(pageFinishedAnchor, pageFinishedAnchor + "\\n" + autoScan)
+        }
         val downloadListenerAnchor = "                            viewModel.handleDownloadRequest(url, userAgent, contentDisposition, mimetype, contentLength)"
         if (!webViewSource.contains("com.fiveydr.turbofetch.action.BROWSER_DOWNLOAD")) {
             check(webViewSource.contains(downloadListenerAnchor)) { "Could not find Feather download listener insertion point" }
