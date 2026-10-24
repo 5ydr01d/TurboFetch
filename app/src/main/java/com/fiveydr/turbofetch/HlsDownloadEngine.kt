@@ -207,10 +207,14 @@ internal class HlsDownloadEngine {
         val variants = parseVariants(text, finalUrl)
         if (variants.isNotEmpty()) {
             val combinedAudioVariants = variants.filter {
-                it.codecs.contains("mp4a", ignoreCase = true) || it.audioGroup.isBlank()
+                it.audioGroup.isBlank() &&
+                    (it.codecs.isBlank() || it.codecs.contains("mp4a", ignoreCase = true))
             }
-            val candidates = if (combinedAudioVariants.isNotEmpty()) combinedAudioVariants else variants
-            val chosen = candidates.maxByOrNull { it.bandwidth } ?: variants.maxBy { it.bandwidth }
+            if (combinedAudioVariants.isEmpty()) {
+                throw IOException("This HLS master uses a separate audio rendition. TurboFetch will not silently save a video-only track; separate-track muxing is not available for this playlist yet.")
+            }
+            val chosen = combinedAudioVariants.maxByOrNull { it.bandwidth }
+                ?: throw IOException("No directly downloadable HLS variant was found")
             val next = fetchManifest(chosen.url, requestHeaders, control, destination)
             if (!next.first.trimStart('\uFEFF', ' ', '\t', '\r', '\n').startsWith("#EXTM3U")) {
                 throw IOException("The selected HLS variant did not return a valid playlist")
