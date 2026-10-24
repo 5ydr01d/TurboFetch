@@ -106,7 +106,7 @@ class ResumableHttpEngineTest {
         val partial = File(root, "cancelled.bin.part")
         val metadataFile = File(root, "cancelled.bin.part.properties")
         partial.writeBytes(byteArrayOf(1, 2, 3))
-        metadataFile.writeText("url=${url()}\netag=\\"test\\"\n")
+        metadataFile.writeText("url=${url()}\netag=test\n")
         val control = ResumableHttpEngine.Control().apply { cancel() }
 
         try {
