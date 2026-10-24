@@ -101,6 +101,7 @@ class CustomDownloadService : Service() {
         if (jobs.isEmpty() && waiting.isEmpty()) stopSelf()
     }
 
+    @Synchronized
     private fun startDownload(id: Long) {
         if (jobs.containsKey(id)) return
         val row = findRow(id) ?: return
@@ -120,7 +121,8 @@ class CustomDownloadService : Service() {
             updateRow(id) { it.put("phase", PHASE_FAILED).put("reason", "Cannot create download storage directory") }
             return
         }
-        val destination = File(directory, safeName(title))
+        val savedDestination = row.optString("destination").takeIf { it.isNotBlank() }?.let(::File)
+        val destination = savedDestination ?: File(directory, DownloadLinkTools.transferFileName(id, title))
         val control = ResumableHttpEngine.Control()
         controls[id] = control
         updateRow(id) {
@@ -140,6 +142,10 @@ class CustomDownloadService : Service() {
                             .put("updatedAt", System.currentTimeMillis())
                     }
                     updateNotification()
+                }
+                if (control.isCancelled()) {
+                    result.file.delete()
+                    throw ResumableHttpEngine.CancelledException(result.file)
                 }
                 val uri = publishToDownloads(result.file, title)
                 updateRow(id) {
@@ -202,18 +208,23 @@ class CustomDownloadService : Service() {
     }
 
     private fun cancel(id: Long) {
-        controls[id]?.cancel()
-        val row = findRow(id)
-        val destination = row?.optString("destination").orEmpty()
-        if (destination.isNotBlank()) {
-            val base = File(destination)
-            File(destination + ".part").delete()
-            File(destination + ".part.properties").delete()
-            File(destination + ".segments.properties").delete()
-            base.parentFile?.listFiles()
-                ?.filter { it.name.startsWith(base.name + ".segment-") }
-                ?.forEach { it.delete() }
-            File(base.parentFile, base.name + ".assembling").delete()
+        // An active engine owns its scratch files. Deleting them here races with its writer and
+        // can recreate partial files after the UI already reports cancellation.
+        val activeControl = controls[id]
+        activeControl?.cancel()
+        if (activeControl == null) {
+            val row = findRow(id)
+            val destination = row?.optString("destination").orEmpty()
+            if (destination.isNotBlank()) {
+                val base = File(destination)
+                File(destination + ".part").delete()
+                File(destination + ".part.properties").delete()
+                File(destination + ".segments.properties").delete()
+                base.parentFile?.listFiles()
+                    ?.filter { it.name.startsWith(base.name + ".segment-") }
+                    ?.forEach { it.delete() }
+                File(base.parentFile, base.name + ".assembling").delete()
+            }
         }
         updateRow(id) { it.put("phase", PHASE_CANCELLED).put("reason", "Cancelled") }
         updateNotification()
