@@ -292,11 +292,15 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(top = 1.dp, bottom = 2.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Downloads", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                            Text("${activeCount} active  ·  ${completedCount} completed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Download queue", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Text("${activeCount} active · ${waitingCount} waiting", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(selected = tab == AppTab.Home, onClick = { tab = AppTab.Home }, label = { Text("Queue (${waitingCount} waiting)") })
+                            FilterChip(selected = tab == AppTab.Files, onClick = { tab = AppTab.Files }, label = { Text("Library (${completedCount})") })
                         }
                         if (loading && rows.isEmpty()) {
                             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
@@ -304,17 +308,17 @@ class MainActivity : ComponentActivity() {
                             }
                         } else if (visibleRows.isEmpty()) {
                             EmptyState(
-                                title = if (search.isBlank()) "No downloads yet" else "No matching downloads",
-                                message = if (search.isBlank()) "Paste a direct URL above or use Advanced tools to import links." else "Try another filename, URL, or status filter.",
-                                action = "Advanced tools",
-                                onAction = { tab = AppTab.Settings }
+                                title = if (search.isBlank()) "Queue is empty" else "No matching queued downloads",
+                                message = if (search.isBlank()) "Add a link above. Completed files appear in Library." else "Try another filename, URL, or status filter.",
+                                action = "Open library",
+                                onAction = { tab = AppTab.Files }
                             )
                         } else {
                             LazyColumn(
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(5.dp)
                             ) {
-                                items(visibleRows, key = { it.id }) { row ->
+                                items(visibleRows.filter { !it.isComplete }, key = { it.id }) { row ->
                                     DownloadCard(
                                         row = row,
                                         onOpen = { openDownloadedFile(row.id) },
