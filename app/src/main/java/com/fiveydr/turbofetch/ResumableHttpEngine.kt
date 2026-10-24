@@ -91,6 +91,18 @@ internal class ResumableHttpEngine(
                 connect()
             }
             val code = connection.responseCode
+            if (code == 416 && requestResume) {
+                // The saved offset is no longer valid for this resource. Discard the stale
+                // partial and validator, then retry exactly once without a Range header.
+                connection?.disconnect()
+                connection = null
+                if (part.exists() && !part.delete()) {
+                    throw IOException("Server rejected resume with HTTP 416; could not discard stale partial data")
+                }
+                metadata.delete()
+                properties.clear()
+                return download(sourceUrl, destination, control, requestHeaders, onProgress)
+            }
             if (code !in 200..299) throw IOException("Server returned HTTP $code")
 
             val responseRangeStart = parseRangeStart(connection.getHeaderField("Content-Range"))
