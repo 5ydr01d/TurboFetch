@@ -129,12 +129,17 @@ internal object MediaArtifactTools {
         const tag = el.tagName.toLowerCase();
         const title = el.getAttribute('download') || el.getAttribute('aria-label') ||
           el.getAttribute('title') || el.getAttribute('alt') || el.innerText || '';
-        const mime = el.getAttribute('type') || '';
+        const declaredMime = el.getAttribute('type') || '';
         const href = el.getAttribute('href') || '';
         if (tag === 'a' && !el.hasAttribute('download') && !fileLike.test(href) &&
-            !/^(?:image|video|audio)\//i.test(mime) &&
-            !/application\/(?:pdf|zip|x-7z|vnd\.|msword)/i.test(mime)) return;
-        ['href','src','poster','data'].forEach(attr => { if (el.getAttribute(attr)) add(el.getAttribute(attr), title, mime); });
+            !/^(?:image|video|audio)\//i.test(declaredMime) &&
+            !/application\/(?:pdf|zip|x-7z|vnd\.|msword)/i.test(declaredMime)) return;
+        const inferredMime = declaredMime || (tag === 'img' ? 'image/*' : tag === 'video' ? 'video/*' : tag === 'audio' ? 'audio/*' : '');
+        ['href','src','poster','data'].forEach(attr => {
+          if (!el.getAttribute(attr)) return;
+          const itemMime = attr === 'poster' ? 'image/*' : inferredMime;
+          add(el.getAttribute(attr), title, itemMime);
+        });
         if (el.getAttribute('srcset')) el.getAttribute('srcset').split(',').forEach(item => add(item.trim().split(/\s+/)[0], title, mime));
       });
       document.querySelectorAll('video').forEach(v => {
