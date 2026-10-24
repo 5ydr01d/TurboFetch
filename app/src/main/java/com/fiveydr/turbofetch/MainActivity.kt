@@ -94,7 +94,6 @@ import java.nio.charset.StandardCharsets
 
 private enum class AppTab(val label: String, val symbol: String) {
     Home("Queue", "↓"),
-    Downloads("Downloads", "☷"),
     Files("Library", "▤"),
     Settings("Settings", "⚙")
 }
@@ -321,54 +320,6 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                    AppTab.Downloads -> {
-                        SectionHeader("Download manager", "$activeCount active · $waitingCount waiting · $completedCount complete")
-                        OutlinedTextField(
-                            value = search,
-                            onValueChange = { search = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            label = { Text("Search downloads") },
-                            placeholder = { Text("Filename or source URL") }
-                        )
-                        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            DownloadFilter.entries.forEach { option ->
-                                FilterChip(
-                                    selected = filter == option,
-                                    onClick = { filter = option },
-                                    label = { Text(option.label) }
-                                )
-                            }
-                        }
-                        if (loading && rows.isEmpty()) {
-                            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                                Text("Loading download history…")
-                            }
-                        } else if (visibleRows.isEmpty()) {
-                            EmptyState(
-                                title = if (search.isBlank()) "Nothing in this view" else "No matching downloads",
-                                message = if (search.isBlank()) "Add a link from Home to start a download." else "Try another filename, URL, or status filter.",
-                                action = "Add download",
-                                onAction = { tab = AppTab.Home }
-                            )
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier.weight(1f).fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                items(visibleRows, key = { it.id }) { row ->
-                                    DownloadCard(
-                                        row = row,
-                                        onOpen = { openDownloadedFile(row.id) },
-                                        onShare = { shareDownloadedFile(row.id) },
-                                        onRetry = { retry(row, rows) { rows = loadRows() } },
-                                        onPauseResume = { controlDownload(row) { rows = loadRows() } },
-                                        onDismiss = { dismissOrCancel(row) { rows = loadRows() } }
-                                    )
-                                }
-                            }
-                        }
-                    }
                     AppTab.Files -> {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -393,7 +344,7 @@ class MainActivity : ComponentActivity() {
                                 title = "No completed files yet",
                                 message = "When a download completes, it will appear here with Open and Share actions.",
                                 action = "View downloads",
-                                onAction = { tab = AppTab.Downloads }
+                                onAction = { tab = AppTab.Home }
                             )
                         } else {
                             LazyColumn(
