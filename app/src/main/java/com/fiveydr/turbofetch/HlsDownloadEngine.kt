@@ -51,6 +51,9 @@ internal class HlsDownloadEngine {
         val isFmp4: Boolean
     )
 
+    // Cache AES keys only within a single transfer, never across accounts/downloads.
+    private val keyCache = ConcurrentHashMap<String, ByteArray>()
+
     private class RateLimitedException(
         message: String,
         val retryAfterSeconds: Long?
@@ -60,7 +63,6 @@ internal class HlsDownloadEngine {
         private const val MAX_SEGMENT_ATTEMPTS = 4
         private const val MAX_MANIFEST_BYTES = 8 * 1024 * 1024
         private const val SEGMENT_BUFFER_SIZE = 128 * 1024
-        private val keyCache = ConcurrentHashMap<String, ByteArray>()
 
         fun isCandidate(url: String): Boolean = runCatching {
             URI(url).path.orEmpty().lowercase().endsWith(".m3u8")
@@ -346,8 +348,20 @@ internal class HlsDownloadEngine {
                         connection.getHeaderField("Retry-After")?.toLongOrNull())
                 }
                 if (code !in 200..299) throw IOException("HTTP " + code + " while fetching an HLS segment")
-                if (segment.rangeOffset != null && segment.rangeLength != null && code != HttpURLConnection.HTTP_PARTIAL) {
-                    throw IOException("The server ignored an HLS byte-range request")
+                if (segment.rangeOffset != null && segment.rangeLength != null) {
+                    if (code != HttpURLConnection.HTTP_PARTIAL) {
+                        throw IOException("The server ignored an HLS byte-range request")
+                    }
+                    val expectedStart = segment.rangeOffset
+                    val expectedEnd = expectedStart + segment.rangeLength - 1L
+                    val range = Regex("^bytes\\s+(\\d+)-(\\d+)/(?:\\d+|\\*)$", RegexOption.IGNORE_CASE)
+                        .find(connection.getHeaderField("Content-Range").orEmpty())
+                        ?: throw IOException("The server returned an invalid HLS Content-Range header")
+                    if (range.groupValues[1].toLongOrNull() != expectedStart ||
+                        range.groupValues[2].toLongOrNull() != expectedEnd
+                    ) {
+                        throw IOException("The server returned an unexpected HLS byte range")
+                    }
                 }
                 var written = 0L
                 connection.inputStream.use { input ->
