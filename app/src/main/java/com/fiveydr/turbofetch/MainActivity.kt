@@ -794,6 +794,9 @@ class MainActivity : ComponentActivity() {
             if (HlsDownloadEngine.isCandidate(url) && title.endsWith(".m3u8", ignoreCase = true)) {
                 title = title.dropLast(5) + ".ts"
             }
+            if (DashDownloadEngine.isCandidate(url) && title.endsWith(".mpd", ignoreCase = true)) {
+                title = title.dropLast(4) + ".mp4"
+            }
             if (title.lowercase(Locale.ROOT) in used) {
                 val dot = title.lastIndexOf('.')
                 val stem = if (dot > 0) title.substring(0, dot) else title
@@ -945,9 +948,13 @@ class MainActivity : ComponentActivity() {
             ?.takeIf { it.isNotBlank() }
             ?: "download-${System.currentTimeMillis()}.bin"
         val safeName = sanitizeFileName(raw)
-        return if (HlsDownloadEngine.isCandidate(uri.toString()) && safeName.endsWith(".m3u8", ignoreCase = true)) {
-            safeName.dropLast(5) + ".ts"
-        } else safeName
+        return when {
+            HlsDownloadEngine.isCandidate(uri.toString()) && safeName.endsWith(".m3u8", ignoreCase = true) ->
+                safeName.dropLast(5) + ".ts"
+            DashDownloadEngine.isCandidate(uri.toString()) && safeName.endsWith(".mpd", ignoreCase = true) ->
+                safeName.dropLast(4) + ".mp4"
+            else -> safeName
+        }
     }
 
     private fun uniqueTitle(baseName: String, rows: List<DownloadRow>): String {
@@ -1004,10 +1011,12 @@ class MainActivity : ComponentActivity() {
                 File(destination + ".part.properties").delete()
                 File(destination + ".segments.properties").delete()
                 File(destination + ".hls-work").deleteRecursively()
+                File(destination + ".dash-work").deleteRecursively()
                 base.parentFile?.listFiles()
                     ?.filter {
                         it.name.startsWith(base.name + ".segment-") ||
-                            it.name.startsWith(base.nameWithoutExtension + ".hls-output.")
+                            it.name.startsWith(base.nameWithoutExtension + ".hls-output.") ||
+                            it.name.startsWith(base.nameWithoutExtension + ".dash-output.")
                     }
                     ?.forEach { it.deleteRecursively() }
                 File(base.parentFile, base.name + ".assembling").delete()
