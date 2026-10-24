@@ -161,6 +161,9 @@ internal class ResumableHttpEngine(
     private fun checkControl(control: Control, part: File) {
         if (control.isCancelled()) {
             part.delete()
+            // Cancellation is destructive by contract; remove its resume metadata as well so a
+            // later retry cannot treat a cancelled transfer as resumable state.
+            File(part.parentFile, part.name + ".properties").delete()
             throw CancelledException(part)
         }
         if (control.isPaused()) throw PausedException(part)

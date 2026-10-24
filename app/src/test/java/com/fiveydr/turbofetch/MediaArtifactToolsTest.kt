@@ -15,6 +15,8 @@ class MediaArtifactToolsTest {
         assertEquals(MediaArtifactTools.Kind.DOCUMENT, MediaArtifactTools.classify("https://cdn.example/report.docx"))
         assertEquals(MediaArtifactTools.Kind.ARCHIVE, MediaArtifactTools.classify("https://cdn.example/archive.7z"))
         assertEquals(MediaArtifactTools.Kind.STREAM, MediaArtifactTools.classify("https://cdn.example/master.m3u8"))
+        assertEquals(MediaArtifactTools.Kind.STREAM, MediaArtifactTools.classify("https://cdn.example/manifest.mpd"))
+        assertEquals(MediaArtifactTools.Kind.STREAM, MediaArtifactTools.classify("https://cdn.example/manifest", "application/dash+xml"))
     }
 
     @Test
@@ -46,5 +48,7 @@ class MediaArtifactToolsTest {
         assertEquals(MediaArtifactTools.Kind.DOCUMENT, artifact?.kind)
         assertNull(MediaArtifactTools.artifact("javascript:alert(1)"))
         assertTrue(MediaArtifactTools.PAGE_SCAN_SCRIPT.contains("querySelectorAll"))
+        assertTrue(MediaArtifactTools.PAGE_SCAN_SCRIPT.contains("parentTag"))
+        assertTrue(MediaArtifactTools.PAGE_SCAN_SCRIPT.contains("application/dash+xml"))
     }
 }

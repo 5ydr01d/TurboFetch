@@ -18,8 +18,8 @@ android {
         applicationId = "com.fiveydr.turbofetch"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.4.3"
+        versionCode = 10
+        versionName = "0.4.4"
     }
 
     // Build one APK per ABI so each phone installs only its own native FFmpeg/Python
@@ -294,7 +294,9 @@ val patchFeatherPopupBlocker = tasks.register("patchFeatherPopupBlocker") {
             check(webViewSource.contains(pageFinishedAnchor)) { "Could not find Feather onPageFinished insertion point for automatic artifact scan" }
             val autoScan = listOf(
                 "                                // TurboFetch: keep rescanning while embedded players initialize and request their manifests.",
-                "                                if (url != null && (url.startsWith(\"https://\") || url.startsWith(\"http://\"))) {",
+                "                                if (isPrivate) {",
+                "                                    view?.context?.getSharedPreferences(\"turbofetch_browser_artifacts\", android.content.Context.MODE_PRIVATE)?.edit()?.remove(\"turbofetch_artifact_scan_url\")?.remove(\"turbofetch_artifact_scan_json\")?.remove(\"turbofetch_artifact_scan_time\")?.apply()",
+                "                                } else if (url != null && (url.startsWith(\"https://\") || url.startsWith(\"http://\"))) {",
                 "                                    val scanScript = com.fiveydr.turbofetch.MediaArtifactTools.PAGE_SCAN_SCRIPT",
                 "                                    val scanHandler = android.os.Handler(android.os.Looper.getMainLooper())",
                 "                                    val scanCount = intArrayOf(0)",
