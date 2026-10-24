@@ -995,9 +995,13 @@ class MainActivity : ComponentActivity() {
                 File(destination + ".part").delete()
                 File(destination + ".part.properties").delete()
                 File(destination + ".segments.properties").delete()
+                File(destination + ".hls-work").deleteRecursively()
                 base.parentFile?.listFiles()
-                    ?.filter { it.name.startsWith(base.name + ".segment-") }
-                    ?.forEach { it.delete() }
+                    ?.filter {
+                        it.name.startsWith(base.name + ".segment-") ||
+                            it.name.startsWith(base.nameWithoutExtension + ".hls-output.")
+                    }
+                    ?.forEach { it.deleteRecursively() }
                 File(base.parentFile, base.name + ".assembling").delete()
             }
             return
