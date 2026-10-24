@@ -22,6 +22,17 @@ android {
         versionName = "0.4.0"
     }
 
+    // Build one APK per ABI so each phone installs only its own native FFmpeg/Python
+    // libraries. All supported ABIs remain available as separate downloadable artifacts.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
+            isUniversalApk = false
+        }
+    }
+
     signingConfigs {
         getByName("debug") {
             if (!ciDebugKeystorePath.isNullOrBlank()) {
