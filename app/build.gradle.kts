@@ -115,6 +115,93 @@ val patchFeatherPopupBlocker = tasks.register("patchFeatherPopupBlocker") {
         }
         settingsFile.writeText(settingsSource)
 
+        // Put the Universal Artifact Downloader entry point directly in Feather's address bar.
+        val addressBarFile = layout.buildDirectory.file("generated/feather/java/com/example/ui/components/AddressBar.kt").get().asFile
+        check(addressBarFile.exists()) { "Feather AddressBar.kt was not copied" }
+        var addressBarSource = addressBarFile.readText()
+        val addressSignature = """    onGoHome: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+)"""
+        if (!addressBarSource.contains("onOpenUniversalArtifactFinder")) {
+            check(addressBarSource.contains(addressSignature)) { "Could not find Feather AddressBar signature insertion point" }
+            addressBarSource = addressBarSource.replace(
+                addressSignature,
+                """    onGoHome: (() -> Unit)? = null,
+    onOpenUniversalArtifactFinder: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+)"""
+            )
+        }
+        val addressActionAnchor = "                    // Quick Reload or Bookmark on Top Bar"
+        if (!addressBarSource.contains("Universal Artifact Downloader")) {
+            check(addressBarSource.contains(addressActionAnchor)) { "Could not find Feather address-bar action insertion point" }
+            val finderButton = listOf(
+                "                    // Universal Artifact Downloader stays inside Feather Browser.",
+                "                    if (hasValidUrl && onOpenUniversalArtifactFinder != null) {",
+                "                        IconButton(",
+                "                            onClick = onOpenUniversalArtifactFinder,",
+                "                            modifier = Modifier.size(36.dp).focusProperties { canFocus = false }.testTag(\"universal_artifact_finder_button\")",
+                "                        ) {",
+                "                            Icon(",
+                "                                imageVector = Icons.Default.Download,",
+                "                                contentDescription = \"Universal Artifact Downloader\",",
+                "                                tint = MaterialTheme.colorScheme.primary,",
+                "                                modifier = Modifier.size(20.dp)",
+                "                            )",
+                "                        }",
+                "                    }",
+                ""
+            ).joinToString("\n")
+            addressBarSource = addressBarSource.replace(addressActionAnchor, finderButton + addressActionAnchor)
+        }
+        addressBarFile.writeText(addressBarSource)
+
+        val browserScreenFile = layout.buildDirectory.file("generated/feather/java/com/example/ui/BrowserScreen.kt").get().asFile
+        check(browserScreenFile.exists()) { "Feather BrowserScreen.kt was not copied" }
+        var browserScreenSource = browserScreenFile.readText()
+        val addressStateAnchor = "    var isAddressBarEditing by remember { mutableStateOf(false) }"
+        if (!browserScreenSource.contains("showUniversalArtifactFinder")) {
+            check(browserScreenSource.contains(addressStateAnchor)) { "Could not find Feather BrowserScreen state insertion point" }
+            browserScreenSource = browserScreenSource.replace(
+                addressStateAnchor,
+                addressStateAnchor + "\n    var showUniversalArtifactFinder by remember { mutableStateOf(false) }"
+            )
+        }
+        val addressCallbackAnchor = "                                        onGoHome = { dismissAddressBar(); viewModel.goHome() }"
+        if (!browserScreenSource.contains("onOpenUniversalArtifactFinder =")) {
+            check(browserScreenSource.contains(addressCallbackAnchor)) { "Could not find Feather AddressBar callback insertion point" }
+            browserScreenSource = browserScreenSource.replace(
+                addressCallbackAnchor,
+                addressCallbackAnchor + ",\n                                        onOpenUniversalArtifactFinder = { dismissAddressBar(); showUniversalArtifactFinder = true }"
+            )
+        }
+        val browserBoxAnchor = "    Box(modifier = modifier.fillMaxSize()) {"
+        if (!browserScreenSource.contains("UniversalArtifactFinderDialog(")) {
+            check(browserScreenSource.contains(browserBoxAnchor)) { "Could not find Feather BrowserScreen overlay insertion point" }
+            val finderDialog = listOf(
+                "    Box(modifier = modifier.fillMaxSize()) {",
+                "        if (showUniversalArtifactFinder) {",
+                "            UniversalArtifactFinderDialog(",
+                "                pageUrl = currentUrl,",
+                "                onDismiss = { showUniversalArtifactFinder = false },",
+                "                onDownload = { url, userAgent, referer, cookie ->",
+                "                    val handoff = android.content.Intent(context, com.fiveydr.turbofetch.MainActivity::class.java).apply {",
+                "                        action = \"com.fiveydr.turbofetch.action.BROWSER_DOWNLOAD\"",
+                "                        putExtra(\"com.fiveydr.turbofetch.extra.DOWNLOAD_URL\", url)",
+                "                        putExtra(\"com.fiveydr.turbofetch.extra.USER_AGENT\", userAgent.ifBlank { android.webkit.WebSettings.getDefaultUserAgent(context) })",
+                "                        putExtra(\"com.fiveydr.turbofetch.extra.REFERER\", referer)",
+                "                        putExtra(\"com.fiveydr.turbofetch.extra.COOKIE\", cookie)",
+                "                    }",
+                "                    showUniversalArtifactFinder = false",
+                "                    context.startActivity(handoff)",
+                "                }",
+                "            )",
+                "        }"
+            ).joinToString("\n")
+            browserScreenSource = browserScreenSource.replace(browserBoxAnchor, finderDialog)
+        }
+        browserScreenFile.writeText(browserScreenSource)
+
         val webViewFile = layout.buildDirectory.file("generated/feather/java/com/example/ui/components/WebViewContainer.kt").get().asFile
         check(webViewFile.exists()) { "Feather WebViewContainer.kt was not copied" }
         var webViewSource = webViewFile.readText()
