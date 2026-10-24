@@ -84,7 +84,7 @@ internal class DashDownloadEngine {
         requestHeaders: Map<String, String> = emptyMap(),
         onProgress: (ResumableHttpEngine.Progress) -> Unit = {}
     ): ResumableHttpEngine.Result {
-        val manifest = fetchManifest(sourceUrl, requestHeaders, control, destination)
+        val manifest = fetchManifest(sourceUrl, sourceUrl, requestHeaders, control, destination)
         val tracks = parseManifest(sourceUrl, manifest)
         val video = tracks.filter { it.kind == Kind.VIDEO }
             .maxWithOrNull(compareBy<Representation> { it.height }.thenBy { it.bandwidth })
@@ -96,10 +96,10 @@ internal class DashDownloadEngine {
         // A direct MP4/M4A BaseURL can use the existing validator-aware HTTP engine without
         // fragment concatenation or a separate output stage.
         if (video?.directUrl != null && audio == null) {
-            return downloadDirect(video, destination, control, requestHeaders, onProgress)
+            return downloadDirect(video, sourceUrl, destination, control, requestHeaders, onProgress)
         }
         if (audio?.directUrl != null && video == null) {
-            return downloadDirect(audio, destination, control, requestHeaders, onProgress)
+            return downloadDirect(audio, sourceUrl, destination, control, requestHeaders, onProgress)
         }
 
         val workDir = File(destination.parentFile, destination.name + ".dash-work")
@@ -122,10 +122,10 @@ internal class DashDownloadEngine {
         var preserveWork = false
         try {
             val videoFile = video?.let {
-                downloadTrack(it, "video", workDir, control, requestHeaders, onProgress)
+                downloadTrack(it, "video", workDir, sourceUrl, control, requestHeaders, onProgress)
             }
             val audioFile = audio?.let {
-                downloadTrack(it, "audio", workDir, control, requestHeaders, onProgress)
+                downloadTrack(it, "audio", workDir, sourceUrl, control, requestHeaders, onProgress)
             }
             checkControl(control, destination)
 
@@ -167,6 +167,7 @@ internal class DashDownloadEngine {
 
     private fun downloadDirect(
         representation: Representation,
+        credentialOrigin: String,
         destination: File,
         control: ResumableHttpEngine.Control,
         headers: Map<String, String>,
@@ -177,7 +178,10 @@ internal class DashDownloadEngine {
         val extension = representation.extension.ifBlank { if (representation.kind == Kind.AUDIO) "m4a" else "mp4" }
         val output = File(destination.parentFile, stem + ".dash-output." + extension)
         return try {
-            ResumableHttpEngine().download(representation.directUrl!!, output, control, headers, onProgress)
+            ResumableHttpEngine().download(
+                representation.directUrl!!, output, control,
+                headersForTarget(credentialOrigin, representation.directUrl!!, headers), onProgress
+            )
         } catch (error: ResumableHttpEngine.CancelledException) {
             output.delete()
             File(output.parentFile, output.name + ".part").delete()
@@ -188,6 +192,7 @@ internal class DashDownloadEngine {
 
     private fun fetchManifest(
         url: String,
+        credentialOrigin: String,
         headers: Map<String, String>,
         control: ResumableHttpEngine.Control,
         partialFile: File
@@ -201,11 +206,12 @@ internal class DashDownloadEngine {
                 instanceFollowRedirects = true
                 requestMethod = "GET"
                 setRequestProperty("Accept-Encoding", "identity")
+                val scopedHeaders = headersForTarget(credentialOrigin, url, headers)
                 setRequestProperty(
                     "User-Agent",
-                    headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value ?: "TurboFetch/1.0"
+                    scopedHeaders.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value ?: "TurboFetch/1.0"
                 )
-                DownloadRuntimeOptions.applyHeaders(this, headers)
+                DownloadRuntimeOptions.applyHeaders(this, scopedHeaders)
                 connect()
             }
             val code = connection.responseCode
@@ -480,13 +486,17 @@ internal class DashDownloadEngine {
         representation: Representation,
         trackName: String,
         workDir: File,
+        credentialOrigin: String,
         control: ResumableHttpEngine.Control,
         headers: Map<String, String>,
         onProgress: (ResumableHttpEngine.Progress) -> Unit
     ): File {
         if (representation.directUrl != null) {
             val direct = File(workDir, trackName + "." + representation.extension)
-            return ResumableHttpEngine().download(representation.directUrl, direct, control, headers, onProgress).file
+            return ResumableHttpEngine().download(
+                representation.directUrl, direct, control,
+                headersForTarget(credentialOrigin, representation.directUrl, headers), onProgress
+            ).file
         }
         if (representation.segments.isEmpty()) throw IOException("The DASH representation has no downloadable segments")
 
@@ -504,7 +514,7 @@ internal class DashDownloadEngine {
                     val target = segmentFile(workDir, trackName, index)
                     if (!isCompleteSegment(target)) {
                         inFlight[index] = AtomicLong(0L)
-                        downloadSegment(segment, target, control, headers) { bytes ->
+                        downloadSegment(segment, target, credentialOrigin, control, headers) { bytes ->
                             inFlight[index]?.set(bytes)
                             val total = completeBytes.get() + inFlight.values.sumOf { it.get() }
                             onProgress(ResumableHttpEngine.Progress(total, null, 0L, wasResumed))
@@ -553,6 +563,7 @@ internal class DashDownloadEngine {
     private fun downloadSegment(
         segment: Segment,
         target: File,
+        credentialOrigin: String,
         control: ResumableHttpEngine.Control,
         headers: Map<String, String>,
         onProgress: (Long) -> Unit
@@ -568,11 +579,12 @@ internal class DashDownloadEngine {
                     instanceFollowRedirects = true
                     requestMethod = "GET"
                     setRequestProperty("Accept-Encoding", "identity")
+                    val scopedHeaders = headersForTarget(credentialOrigin, segment.url, headers)
                     setRequestProperty(
                         "User-Agent",
-                        headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value ?: "TurboFetch/1.0"
+                        scopedHeaders.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value ?: "TurboFetch/1.0"
                     )
-                    DownloadRuntimeOptions.applyHeaders(this, headers)
+                    DownloadRuntimeOptions.applyHeaders(this, scopedHeaders)
                     if (segment.rangeOffset != null && segment.rangeLength != null) {
                         setRequestProperty("Range", "bytes=" + segment.rangeOffset + "-" +
                             (segment.rangeOffset + segment.rangeLength - 1L))
@@ -718,6 +730,32 @@ internal class DashDownloadEngine {
         if (!temporary.renameTo(destination)) {
             temporary.delete()
             throw IOException("Cannot finalize assembled DASH output")
+        }
+    }
+
+    private fun headersForTarget(
+        credentialOrigin: String,
+        targetUrl: String,
+        headers: Map<String, String>
+    ): Map<String, String> {
+        fun port(uri: URI): Int = if (uri.port >= 0) uri.port else when (uri.scheme?.lowercase()) {
+            "https" -> 443
+            "http" -> 80
+            else -> -1
+        }
+        val sameOrigin = runCatching {
+            val origin = URI(credentialOrigin)
+            val target = URI(targetUrl)
+            origin.scheme.equals(target.scheme, ignoreCase = true) &&
+                origin.host.equals(target.host, ignoreCase = true) &&
+                port(origin) == port(target)
+        }.getOrDefault(false)
+        if (sameOrigin) return headers
+        // Credentials and a full Referer must not leak from an MPD to a different CDN origin.
+        return headers.filterKeys {
+            it.equals("User-Agent", true) ||
+                it.equals("Accept", true) ||
+                it.equals("Accept-Language", true)
         }
     }
 
