@@ -23,6 +23,17 @@ class DownloadLinkToolsTest {
     }
 
     @Test
+    fun transferScratchNamesAreUniqueAndSafeForRepeatedDisplayNames() {
+        val first = DownloadLinkTools.transferFileName(101L, "../movie?.mp4")
+        val second = DownloadLinkTools.transferFileName(102L, "../movie?.mp4")
+
+        assertEquals("101-.._movie_.mp4", first)
+        assertEquals("102-.._movie_.mp4", second)
+        assertFalse(first == second)
+        assertTrue(DownloadLinkTools.transferFileName(103L, "   ").endsWith("download.bin"))
+    }
+
+    @Test
     fun classifiesCommonDownloadableFileExtensions() {
         assertTrue(DownloadLinkTools.likelyMediaOrFile("https://cdn.example/video.m3u8?token=abc"))
         assertTrue(DownloadLinkTools.likelyMediaOrFile("https://cdn.example/archive.zip"))
