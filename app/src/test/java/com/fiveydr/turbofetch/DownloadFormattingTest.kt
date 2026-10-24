@@ -28,4 +28,15 @@ class DownloadFormattingTest {
         assertEquals("1.0 MB", formatBytes(1024L * 1024L))
         assertEquals("1.00 GB", formatBytes(1024L * 1024L * 1024L))
     }
+
+    @Test
+    fun formatsEtaAcrossSecondMinuteAndHourBoundaries() {
+        assertEquals("—", formatEta(-1))
+        assertEquals("0s", formatEta(0))
+        assertEquals("59s", formatEta(59))
+        assertEquals("1m 0s", formatEta(60))
+        assertEquals("59m 59s", formatEta(3599))
+        assertEquals("1h 0m", formatEta(3600))
+        assertEquals("2h 3m", formatEta(7380))
+    }
 }

@@ -20,3 +20,13 @@ internal fun formatBytes(value: Long): String {
     if (mb < 1024) return String.format("%.1f MB", mb)
     return String.format("%.2f GB", mb / 1024.0)
 }
+
+internal fun formatEta(seconds: Long): String {
+    if (seconds < 0L) return "—"
+    if (seconds < 60L) return "${seconds}s"
+    if (seconds < 3600L) return "${seconds / 60}m ${seconds % 60}s"
+    val hours = seconds / 3600
+    val minutes = (seconds % 3600) / 60
+    return "${hours}h ${minutes}m"
+}
+
