@@ -65,6 +65,7 @@ internal object MediaArtifactTools {
             mime.startsWith("image/") -> return Kind.IMAGE
             mime.startsWith("video/") -> return Kind.VIDEO
             mime.startsWith("audio/") -> return Kind.AUDIO
+            mime.contains("mpegurl") || mime.contains("dash+xml") -> return Kind.STREAM
             mime == "application/pdf" ||
                 mime.contains("officedocument") ||
                 mime.contains("msword") ||
@@ -155,11 +156,11 @@ internal object MediaArtifactTools {
         if (v.currentSrc && !v.currentSrc.startsWith('blob:')) add(v.currentSrc, title, 'video/*');
         v.querySelectorAll('source[src]').forEach(source => add(source.src, title, source.type || 'video/*'));
       });
-      const manifestPattern = /(?:\\.m3u8|\\.mpd)(?:$|[?#])|(?:manifest|playlist|master)[^/]*(?:$|[?#])/i;
+      const manifestPattern = /(?:\.m3u8|\.mpd)(?:$|[?#])|(?:manifest|playlist|master)[^/]*(?:$|[?#])/i;
       performance.getEntriesByType('resource').forEach(entry => {
         const resourceUrl = entry && entry.name;
         if (!resourceUrl || !manifestPattern.test(resourceUrl)) return;
-        const isDash = /\\.mpd(?:$|[?#])/i.test(resourceUrl);
+        const isDash = /\.mpd(?:$|[?#])/i.test(resourceUrl);
         add(resourceUrl, (document.title || 'Embedded video') + (isDash ? ' · DASH stream' : ' · HLS stream'),
           isDash ? 'application/dash+xml' : 'application/vnd.apple.mpegurl');
       });
