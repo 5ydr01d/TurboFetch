@@ -23,8 +23,9 @@ internal object DownloadHeaderVault {
     private const val IV_SIZE_BYTES = 12
     private const val AUTH_TAG_BITS = 128
 
-    fun encrypt(headers: Map<String, String>): String {
+    fun encrypt(headers: Map<String, String>, associatedData: String): String {
         require(headers.isNotEmpty()) { "Cannot encrypt an empty header map" }
+        require(associatedData.isNotBlank()) { "Encrypted headers must be bound to a download" }
         val payload = JSONObject()
         headers.forEach { (name, value) ->
             if (name.isNotBlank() && value.isNotBlank()) payload.put(name, value)
@@ -33,6 +34,7 @@ internal object DownloadHeaderVault {
 
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+        cipher.updateAAD(associatedData.toByteArray(StandardCharsets.UTF_8))
         val encrypted = cipher.doFinal(payload.toString().toByteArray(StandardCharsets.UTF_8))
         val iv = cipher.iv
         check(iv.size == IV_SIZE_BYTES) { "Unexpected AES-GCM IV size" }
@@ -42,14 +44,16 @@ internal object DownloadHeaderVault {
         return ENVELOPE_PREFIX + Base64.encodeToString(envelope, Base64.NO_WRAP)
     }
 
-    fun decrypt(envelope: String): Map<String, String> {
+    fun decrypt(envelope: String, associatedData: String): Map<String, String> {
         require(envelope.startsWith(ENVELOPE_PREFIX)) { "Unsupported encrypted-header format" }
+        require(associatedData.isNotBlank()) { "Encrypted headers must be bound to a download" }
         val bytes = Base64.decode(envelope.removePrefix(ENVELOPE_PREFIX), Base64.NO_WRAP)
         require(bytes.size > IV_SIZE_BYTES) { "Encrypted request headers are incomplete" }
         val iv = bytes.copyOfRange(0, IV_SIZE_BYTES)
         val encrypted = bytes.copyOfRange(IV_SIZE_BYTES, bytes.size)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(AUTH_TAG_BITS, iv))
+        cipher.updateAAD(associatedData.toByteArray(StandardCharsets.UTF_8))
         val plaintext = cipher.doFinal(encrypted)
         val payload = JSONObject(String(plaintext, StandardCharsets.UTF_8))
         val result = linkedMapOf<String, String>()
@@ -60,6 +64,12 @@ internal object DownloadHeaderVault {
             if (name.isNotBlank() && value.isNotBlank()) result[name] = value
         }
         return result
+    }
+
+    fun associatedDataForDownload(id: Long, url: String): String {
+        require(id != 0L) { "Download ID must be nonzero" }
+        require(url.isNotBlank()) { "Download URL must be nonblank" }
+        return "turbofetch-download-v1\n$id\n$url"
     }
 
     @Synchronized
