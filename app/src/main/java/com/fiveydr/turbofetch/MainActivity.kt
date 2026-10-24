@@ -90,9 +90,9 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
 private enum class AppTab(val label: String, val symbol: String) {
-    Home("Downloads", "↓"),
-    Downloads("Queue", "☷"),
-    Files("Files", "▤"),
+    Home("Queue", "↓"),
+    Downloads("Downloads", "☷"),
+    Files("Library", "▤"),
     Settings("Settings", "⚙")
 }
 
@@ -226,14 +226,14 @@ class MainActivity : ComponentActivity() {
                                     Text("T", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Black)
                                 }
                             }
-                            Text("TurboFetch", fontWeight = FontWeight.Bold)
+                            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) { Text("Downloads", fontWeight = FontWeight.Bold); Text("TurboFetch transfer manager", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         }
                     },
                 )
             },
             bottomBar = {
                 NavigationBar {
-                    AppTab.entries.forEach { destination ->
+                    listOf(AppTab.Home, AppTab.Files, AppTab.Settings).forEach { destination ->
                         NavigationBarItem(
                             selected = tab == destination,
                             onClick = { tab = destination },
