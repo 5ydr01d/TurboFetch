@@ -26,6 +26,7 @@ class ResumableHttpEngineTest {
     private val ignoreRange = AtomicBoolean(false)
     private val ignoreNonProbeRanges = AtomicBoolean(false)
     private val rejectResumeRange = AtomicBoolean(false)
+    private val changeResumeEtag = AtomicBoolean(false)
     @Volatile private var running = true
 
     @Before
@@ -33,6 +34,7 @@ class ResumableHttpEngineTest {
         root = Files.createTempDirectory("turbofetch-engine-test").toFile()
         payload = ByteArray(512 * 1024) { (it % 251).toByte() }
         rejectResumeRange.set(false)
+        changeResumeEtag.set(false)
         server = ServerSocket(0)
         serverThread = Thread {
             while (running) {
@@ -99,7 +101,8 @@ class ResumableHttpEngineTest {
             val responseHeaders = buildString {
                 append("HTTP/1.1 $status\r\n")
                 append("Content-Length: $bodyLength\r\n")
-                append("ETag: \"test-etag\"\r\n")
+                val responseEtag = if (changeResumeEtag.get() && requestedRangeStart != null && requestedRangeStart > 0) "\"changed-etag\"" else "\"test-etag\""
+                append("ETag: $responseEtag\r\n")
                 if (partial) append("Content-Range: bytes $start-$endByte/${payload.size}\r\n")
                 append("Connection: close\r\n\r\n")
             }
@@ -168,6 +171,27 @@ class ResumableHttpEngineTest {
         assertTrue(sawRange != null)
         assertTrue(!result.resumed)
         assertArrayEquals(payload, destination.readBytes())
+    }
+
+    @Test
+    fun restartsFromZeroWhenResumeValidatorChanges() {
+        val destination = File(root, "changed-validator.bin")
+        val partial = File(root, "changed-validator.bin.part")
+        val metadataFile = File(root, "changed-validator.bin.part.properties")
+        partial.writeBytes(payload.copyOfRange(0, 100_000))
+        val metadata = Properties().apply {
+            setProperty("url", url())
+            setProperty("etag", ""\"old-etag\""")
+        }
+        metadataFile.outputStream().use { metadata.store(it, null) }
+        changeResumeEtag.set(true)
+
+        val result = ResumableHttpEngine().download(url(), destination)
+
+        assertFalse(result.resumed)
+        assertArrayEquals(payload, destination.readBytes())
+        assertFalse(partial.exists())
+        assertFalse(metadataFile.exists())
     }
 
     @Test
