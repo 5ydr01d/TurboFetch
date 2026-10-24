@@ -31,6 +31,11 @@ internal class AdaptiveDownloadEngine(
         requestHeaders: Map<String, String> = emptyMap(),
         onProgress: (ResumableHttpEngine.Progress) -> Unit = {},
     ): ResumableHttpEngine.Result {
+        // HLS playlists are segmented media downloads, not ordinary file byte ranges.
+        // Route them through the VOD segment engine before inspecting a .part file.
+        if (HlsDownloadEngine.isCandidate(sourceUrl)) {
+            return HlsDownloadEngine().download(sourceUrl, destination, control, requestHeaders, onProgress)
+        }
         val existingPart = File(destination.parentFile, destination.name + ".part")
         // A saved single-stream partial always goes through the proven validator-based resume path.
         if (existingPart.length() > 0L) return singleStream.download(sourceUrl, destination, control, requestHeaders, onProgress)
