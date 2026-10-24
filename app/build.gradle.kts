@@ -18,8 +18,8 @@ android {
         applicationId = "com.fiveydr.turbofetch"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "0.4.1"
+        versionCode = 8
+        versionName = "0.4.2"
     }
 
     // Build one APK per ABI so each phone installs only its own native FFmpeg/Python
@@ -214,6 +214,60 @@ val patchFeatherPopupBlocker = tasks.register("patchFeatherPopupBlocker") {
             ).joinToString("\n")
             browserScreenSource = browserScreenSource.replace(browserBoxAnchor, finderDialog)
         }
+
+        // The bottom toolbar uses a separate address pill; inject the same downloader action there too.
+        val bottomBarFile = layout.buildDirectory.file("generated/feather/java/com/example/ui/components/UnifiedBottomCommandBar.kt").get().asFile
+        check(bottomBarFile.exists()) { "Feather UnifiedBottomCommandBar.kt was not copied" }
+        var bottomBarSource = bottomBarFile.readText()
+        val bottomSignature = """    onOpenReaderMode: (() -> Unit)? = null
+)"""
+        if (!bottomBarSource.contains("onOpenUniversalArtifactFinder")) {
+            check(bottomBarSource.contains(bottomSignature)) { "Could not find Feather bottom address-bar signature insertion point" }
+            bottomBarSource = bottomBarSource.replace(
+                bottomSignature,
+                """    onOpenReaderMode: (() -> Unit)? = null,
+    onOpenUniversalArtifactFinder: (() -> Unit)? = null
+)"""
+            )
+        }
+        val bottomReloadAnchor = """                                // Quick Reload / Stop Icon inside the pill
+                                if (hasValidUrl) {"""
+        if (!bottomBarSource.contains("universal_artifact_finder_bottom_button")) {
+            check(bottomBarSource.contains(bottomReloadAnchor)) { "Could not find bottom address-pill action insertion point" }
+            val bottomButton = """                                if (hasValidUrl && !isEditing && onOpenUniversalArtifactFinder != null) {
+                                    IconButton(
+                                        onClick = onOpenUniversalArtifactFinder,
+                                        modifier = Modifier
+                                            .size(30.dp)
+                                            .focusProperties { canFocus = false }
+                                            .testTag("universal_artifact_finder_bottom_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Download,
+                                            contentDescription = "Universal Artifact Downloader",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                    }
+                                }
+
+                                // Quick Reload / Stop Icon inside the pill
+                                if (hasValidUrl) {"""
+            bottomBarSource = bottomBarSource.replace(bottomReloadAnchor, bottomButton)
+        }
+        check(bottomBarSource.contains("universal_artifact_finder_bottom_button")) { "Universal Artifact Downloader button was not injected into bottom address pill" }
+        bottomBarFile.writeText(bottomBarSource)
+
+        // Wire the same dialog callback into the bottom-toolbar address pill.
+        val bottomCallbackAnchor = "                            onOpenReaderMode = { viewModel.openReaderMode() }"
+        if (!browserScreenSource.contains("onOpenUniversalArtifactFinder =")) {
+            check(browserScreenSource.contains(bottomCallbackAnchor)) { "Could not find Feather bottom-bar callback insertion point" }
+            browserScreenSource = browserScreenSource.replace(
+                bottomCallbackAnchor,
+                bottomCallbackAnchor + ",\n                            onOpenUniversalArtifactFinder = { dismissAddressBar(); showUniversalArtifactFinder = true }"
+            )
+        }
+
         browserScreenFile.writeText(browserScreenSource)
 
         val webViewFile = layout.buildDirectory.file("generated/feather/java/com/example/ui/components/WebViewContainer.kt").get().asFile
