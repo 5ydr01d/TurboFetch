@@ -108,13 +108,43 @@ class CustomDownloadService : Service() {
         val url = row.optString("url")
         val title = row.optString("title", "download.bin")
         val savedHeaders = row.optJSONObject("headers")
-        val requestHeaders = linkedMapOf<String, String>()
-        if (savedHeaders != null) {
-            val keys = savedHeaders.keys()
-            while (keys.hasNext()) {
-                val key = keys.next()
-                requestHeaders[key] = savedHeaders.optString(key)
+        val encryptedHeaders = row.optString("headersEncrypted", "")
+        val requestHeaders = try {
+            when {
+                encryptedHeaders.isNotBlank() -> DownloadHeaderVault.decrypt(encryptedHeaders)
+                savedHeaders != null -> {
+                    // Migrate queue rows created before request-header encryption was added.
+                    val legacy = linkedMapOf<String, String>()
+                    val keys = savedHeaders.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        val value = savedHeaders.optString(key)
+                        if (key.isNotBlank() && value.isNotBlank()) legacy[key] = value
+                    }
+                    if (legacy.isNotEmpty()) {
+                        val protected = DownloadHeaderVault.encrypt(legacy)
+                        updateRow(id) {
+                            it.put("headersEncrypted", protected)
+                            it.remove("headers")
+                        }
+                    } else {
+                        updateRow(id) { it.remove("headers") }
+                    }
+                    legacy
+                }
+                else -> emptyMap()
             }
+        } catch (error: Exception) {
+            // If the Android Keystore key was removed (for example after a device restore),
+            // never retry with missing credentials or silently save them in plaintext.
+            updateRow(id) {
+                it.put("phase", PHASE_FAILED)
+                    .put("failureType", "Credential storage")
+                    .put("reason", "Saved request credentials are unavailable on this installation. Re-add this download.")
+                it.remove("headers")
+                it.remove("headersEncrypted")
+            }
+            return
         }
         val directory = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: filesDir, "transfers")
         if (!directory.exists() && !directory.mkdirs()) {
@@ -159,6 +189,7 @@ class CustomDownloadService : Service() {
                     // Request headers are no longer needed once the transfer is complete.
                     // This drops cookies/authorization from persisted queue metadata.
                     it.remove("headers")
+                    it.remove("headersEncrypted")
                 }
                 result.file.delete()
             } catch (_: ResumableHttpEngine.PausedException) {
