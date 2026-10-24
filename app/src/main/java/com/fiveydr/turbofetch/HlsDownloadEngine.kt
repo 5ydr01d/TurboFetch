@@ -75,7 +75,7 @@ internal class HlsDownloadEngine {
         onProgress: (ResumableHttpEngine.Progress) -> Unit = {}
     ): ResumableHttpEngine.Result {
         val first = fetchManifest(sourceUrl, requestHeaders, control, destination)
-        if (!first.text.trimStart('\uFEFF', ' ', '\t', '\r', '\n').startsWith("#EXTM3U")) {
+        if (!first.first.trimStart('\uFEFF', ' ', '\t', '\r', '\n').startsWith("#EXTM3U")) {
             throw IOException("The URL did not return a valid HLS playlist")
         }
         val playlist = resolveMediaPlaylist(sourceUrl, first, requestHeaders, control, destination, 0)
