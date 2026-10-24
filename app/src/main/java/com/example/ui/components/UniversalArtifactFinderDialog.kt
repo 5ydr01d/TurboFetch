@@ -63,6 +63,10 @@ fun UniversalArtifactFinderDialog(
     var probingSizes by remember(pageUrl) { mutableStateOf(false) }
     var selectedKind by remember(pageUrl) { mutableStateOf<MediaArtifactTools.Kind?>(null) }
     var sortMode by remember(pageUrl) { mutableStateOf(ArtifactSort.RECOMMENDED) }
+    var inspectStreamUrl by remember(pageUrl) { mutableStateOf("") }
+    var streamFormats by remember(pageUrl) { mutableStateOf<List<VideoSiteExtractor.Format>>(emptyList()) }
+    var streamInspectionMessage by remember(pageUrl) { mutableStateOf("") }
+    var inspectingStream by remember(pageUrl) { mutableStateOf(false) }
 
     LaunchedEffect(pageUrl) {
         val prefs = context.getSharedPreferences("turbofetch_browser_artifacts", Context.MODE_PRIVATE)
@@ -72,7 +76,8 @@ fun UniversalArtifactFinderDialog(
             MediaArtifactTools.Kind.IMAGE,
             MediaArtifactTools.Kind.VIDEO,
             MediaArtifactTools.Kind.AUDIO,
-            MediaArtifactTools.Kind.DOCUMENT
+            MediaArtifactTools.Kind.DOCUMENT,
+            MediaArtifactTools.Kind.STREAM
         )
         val found = runCatching {
             if (savedJson.isNullOrBlank() || savedUrl != pageUrl) emptyList()
@@ -137,8 +142,30 @@ fun UniversalArtifactFinderDialog(
         }
     }
 
+    LaunchedEffect(inspectStreamUrl) {
+        if (inspectStreamUrl.isBlank()) return@LaunchedEffect
+        inspectingStream = true
+        streamInspectionMessage = "Inspecting embedded stream for downloadable qualities…"
+        streamFormats = emptyList()
+        try {
+            val inspection = withContext(Dispatchers.IO) {
+                VideoSiteExtractor.inspect(context.applicationContext, inspectStreamUrl)
+            }
+            streamFormats = inspection.formats
+            streamInspectionMessage = if (inspection.formats.isEmpty()) {
+                "The stream was detected, but no directly downloadable audio-bearing formats were found. It may require site cookies or protected playback."
+            } else {
+                "Found ${inspection.formats.size} downloadable quality option(s)."
+            }
+        } catch (e: Exception) {
+            streamInspectionMessage = "Could not extract this stream: ${e.message ?: "the site may require protected playback"}"
+        } finally {
+            inspectingStream = false
+        }
+    }
+
     val filteredArtifacts = artifacts
-        .filter { selectedKind == null || it.kind == selectedKind }
+        .filter { selectedKind == null || it.kind == selectedKind || (selectedKind == MediaArtifactTools.Kind.VIDEO && it.kind == MediaArtifactTools.Kind.STREAM) }
         .let { list ->
             when (sortMode) {
                 ArtifactSort.RECOMMENDED -> list
@@ -214,10 +241,20 @@ fun UniversalArtifactFinderDialog(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(artifact.url, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        OutlinedButton(
-                            onClick = { onDownload(artifact.url, "", pageUrl, "") },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Download ${artifact.kind.label.lowercase(Locale.ROOT)}") }
+                        if (artifact.kind == MediaArtifactTools.Kind.STREAM) {
+                            OutlinedButton(
+                                onClick = { inspectStreamUrl = artifact.url },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = !inspectingStream
+                            ) {
+                                Text(if (inspectingStream && inspectStreamUrl == artifact.url) "Inspecting stream…" else "Find video qualities")
+                            }
+                        } else {
+                            OutlinedButton(
+                                onClick = { onDownload(artifact.url, "", pageUrl, "") },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Download ${artifact.kind.label.lowercase(Locale.ROOT)}") }
+                        }
                     }
                     HorizontalDivider()
                 }
@@ -230,6 +267,25 @@ fun UniversalArtifactFinderDialog(
                 } else if (videoMessage.isNotBlank()) {
                     Text(videoMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                if (inspectStreamUrl.isNotBlank()) {
+                    Text(streamInspectionMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (inspectingStream) CircularProgressIndicator()
+                    streamFormats.forEach { format ->
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(format.label, style = MaterialTheme.typography.titleSmall)
+                            Button(
+                                onClick = {
+                                    val headers = format.headers
+                                    fun header(name: String) = headers.entries.firstOrNull { it.key.equals(name, true) }?.value.orEmpty()
+                                    onDownload(format.url, header("User-Agent"), header("Referer").ifBlank { pageUrl }, header("Cookie"))
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text(if (format.hasVideo) "Download video quality" else "Download audio quality") }
+                        }
+                        HorizontalDivider()
+                    }
+                }
+
                 formats.forEach { format ->
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(format.label, style = MaterialTheme.typography.titleSmall)
