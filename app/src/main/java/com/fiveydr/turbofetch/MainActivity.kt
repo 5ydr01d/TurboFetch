@@ -509,8 +509,94 @@ class MainActivity : ComponentActivity() {
         var userAgent by remember { mutableStateOf(savedToolHeaders["User-Agent"].orEmpty()) }
         var referer by remember { mutableStateOf(savedToolHeaders["Referer"].orEmpty()) }
         var cookie by remember { mutableStateOf(savedToolHeaders["Cookie"].orEmpty()) }
-        var artifactPageUrl by remember { mutableStateOf("") }
+        var videoSiteUrl by remember { mutableStateOf("") }
+        var videoSiteTitle by remember { mutableStateOf("") }
+        var videoFormats by remember { mutableStateOf(emptyList<VideoSiteExtractor.Format>()) }
+        var selectedVideoFormatUrl by remember { mutableStateOf("") }
+        var videoFormatStatus by remember { mutableStateOf("Paste a supported video-page URL to inspect available direct formats.") }
+        var inspectingVideoFormats by remember { mutableStateOf(false) }
         SectionHeader("Advanced tools", "Direct downloads, queue utilities, and transfer controls")
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("Video site quality picker", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Uses yt-dlp to inspect supported video-hosting pages and list available direct video+audio or audio-only formats. Choose a quality, then hand its direct stream URL to TurboFetch.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            OutlinedTextField(
+                                value = videoSiteUrl,
+                                onValueChange = { videoSiteUrl = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                label = { Text("Video page URL") },
+                                placeholder = { Text("https://video.example/watch/...") }
+                            )
+                            Button(
+                                onClick = {
+                                    if (!DownloadLinkTools.isHttpUrl(videoSiteUrl)) {
+                                        videoFormatStatus = "Enter a valid HTTP/HTTPS video page URL."
+                                    } else {
+                                        inspectingVideoFormats = true
+                                        videoFormats = emptyList()
+                                        selectedVideoFormatUrl = ""
+                                        videoFormatStatus = "Inspecting available formats…"
+                                        lifecycleScope.launch {
+                                            runCatching {
+                                                withContext(Dispatchers.IO) {
+                                                    VideoSiteExtractor.inspect(this@MainActivity, videoSiteUrl.trim())
+                                                }
+                                            }.onSuccess { result ->
+                                                videoSiteTitle = result.title
+                                                videoFormats = result.formats
+                                                selectedVideoFormatUrl = result.formats.firstOrNull()?.url.orEmpty()
+                                                videoFormatStatus = if (result.formats.isEmpty()) {
+                                                    "No direct audio-bearing formats were exposed. This site may require separate video/audio muxing or may not be supported."
+                                                } else {
+                                                    "Found ${result.formats.size} direct format choices for ${result.title}."
+                                                }
+                                            }.onFailure {
+                                                videoFormatStatus = "Could not extract formats: ${it.message ?: "unknown error"}"
+                                            }
+                                            inspectingVideoFormats = false
+                                        }
+                                    }
+                                },
+                                enabled = !inspectingVideoFormats,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text(if (inspectingVideoFormats) "Inspecting…" else "Find video qualities") }
+                            Text(videoFormatStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (videoFormats.isNotEmpty()) {
+                                Text(videoSiteTitle, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                videoFormats.forEach { format ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        androidx.compose.material3.RadioButton(
+                                            selected = selectedVideoFormatUrl == format.url,
+                                            onClick = { selectedVideoFormatUrl = format.url }
+                                        )
+                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(format.label, style = MaterialTheme.typography.bodyMedium)
+                                            Text("Format ID: ${format.id.ifBlank { "n/a" }}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                }
+                                Button(
+                                    onClick = {
+                                        val chosen = videoFormats.firstOrNull { it.url == selectedVideoFormatUrl }
+                                        if (chosen == null) {
+                                            videoFormatStatus = "Choose a format first."
+                                        } else {
+                                            queueToolText(chosen.url, "Video site: ${videoSiteTitle} ${chosen.label}", chosen.headers)
+                                            videoFormatStatus = "Selected direct stream sent to the TurboFetch queue. Some sites issue expiring URLs; queue it promptly."
+                                        }
+                                    },
+                                    enabled = selectedVideoFormatUrl.isNotBlank(),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("Queue selected quality in TurboFetch") }
+                            }
+                            Text("Important: the picker lists direct formats that already include audio, plus audio-only formats. Separate video-only DASH streams are excluded because the current TurboFetch queue does not yet mux separate tracks. DRM/protected streams are not supported.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Add and batch links", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
