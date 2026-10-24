@@ -47,6 +47,9 @@ internal object MediaArtifactTools {
         "csv" to Kind.DOCUMENT, "xls" to Kind.DOCUMENT, "xlsx" to Kind.DOCUMENT,
         "ods" to Kind.DOCUMENT, "ppt" to Kind.DOCUMENT, "pptx" to Kind.DOCUMENT,
         "odp" to Kind.DOCUMENT, "epub" to Kind.DOCUMENT, "mobi" to Kind.DOCUMENT,
+        "json" to Kind.DOCUMENT, "xml" to Kind.DOCUMENT, "yaml" to Kind.DOCUMENT, "yml" to Kind.DOCUMENT,
+        "log" to Kind.DOCUMENT, "md" to Kind.DOCUMENT, "markdown" to Kind.DOCUMENT, "ics" to Kind.DOCUMENT,
+        "pages" to Kind.DOCUMENT, "numbers" to Kind.DOCUMENT, "key" to Kind.DOCUMENT, "psd" to Kind.DOCUMENT,
         "zip" to Kind.ARCHIVE, "rar" to Kind.ARCHIVE, "7z" to Kind.ARCHIVE,
         "tar" to Kind.ARCHIVE, "gz" to Kind.ARCHIVE, "bz2" to Kind.ARCHIVE,
         "xz" to Kind.ARCHIVE, "zst" to Kind.ARCHIVE, "iso" to Kind.ARCHIVE,
@@ -121,13 +124,18 @@ internal object MediaArtifactTools {
           if (!out.has(key)) out.set(key, {url:key, title:(title || '').trim(), mimeType:mime || ''});
         } catch (_) {}
       };
+      const fileLike = /\.(?:avif|bmp|csv|docx?|dmg|epub|flac|gif|gz|html?|jpeg|jpg|json|m4a|m4v|m3u8|mkv|mov|mp3|mp4|mpd|msi|odp|ods|odt|ogg|pdf|png|pptx?|rar|rtf|svg|tar|tif|tiff|txt|wav|webm|webp|xls[xm]?|xml|xz|ya?ml|7z|zip|apk|exe)(?:$|[?#])/i;
       document.querySelectorAll('a[href], img[src], img[srcset], video[src], video[poster], audio[src], source[src], track[src], iframe[src], embed[src], object[data], link[rel="download"][href]').forEach(el => {
         const tag = el.tagName.toLowerCase();
         const title = el.getAttribute('download') || el.getAttribute('aria-label') ||
           el.getAttribute('title') || el.getAttribute('alt') || el.innerText || '';
         const mime = el.getAttribute('type') || '';
+        const href = el.getAttribute('href') || '';
+        if (tag === 'a' && !el.hasAttribute('download') && !fileLike.test(href) &&
+            !/^(?:image|video|audio)\//i.test(mime) &&
+            !/application\/(?:pdf|zip|x-7z|vnd\.|msword)/i.test(mime)) return;
         ['href','src','poster','data'].forEach(attr => { if (el.getAttribute(attr)) add(el.getAttribute(attr), title, mime); });
-        if (el.getAttribute('srcset')) el.getAttribute('srcset').split(',').forEach(item => add(item.trim().split(/\\s+/)[0], title, mime));
+        if (el.getAttribute('srcset')) el.getAttribute('srcset').split(',').forEach(item => add(item.trim().split(/\s+/)[0], title, mime));
       });
       document.querySelectorAll('video').forEach(v => {
         if (v.currentSrc) add(v.currentSrc, v.getAttribute('title') || document.title, 'video/*');
