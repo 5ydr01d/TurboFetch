@@ -23,6 +23,10 @@ internal object DownloadQueueScheduler {
         var localId = -System.currentTimeMillis().coerceAtLeast(1L)
         while (localId in usedIds) localId--
         val createdAt = System.currentTimeMillis()
+        // Encrypt before modifying the queue so a keystore failure cannot persist raw credentials.
+        val encryptedHeaders = headers.takeIf { it.isNotEmpty() }?.let {
+            DownloadHeaderVault.encrypt(it, DownloadHeaderVault.associatedDataForDownload(localId, url))
+        }
         saved.put(
             JSONObject()
                 .put("id", localId)
@@ -33,10 +37,8 @@ internal object DownloadQueueScheduler {
                 .put("description", description)
                 .put("createdAt", createdAt)
                 .also { row ->
-                    if (headers.isNotEmpty()) {
-                        val headerJson = JSONObject()
-                        headers.forEach { (key, value) -> headerJson.put(key, value) }
-                        row.put("headers", headerJson)
+                    if (!encryptedHeaders.isNullOrBlank()) {
+                        row.put("headersEncrypted", encryptedHeaders)
                     }
                 }
         )
