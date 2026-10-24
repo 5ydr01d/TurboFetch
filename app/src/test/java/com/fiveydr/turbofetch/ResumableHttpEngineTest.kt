@@ -101,6 +101,27 @@ class ResumableHttpEngineTest {
     }
 
     @Test
+    fun cancellationRemovesPartialDataAndItsResumeMetadata() {
+        val destination = File(root, "cancelled.bin")
+        val partial = File(root, "cancelled.bin.part")
+        val metadataFile = File(root, "cancelled.bin.part.properties")
+        partial.writeBytes(byteArrayOf(1, 2, 3))
+        metadataFile.writeText("url=${url()}\netag=\\"test\\"\n")
+        val control = ResumableHttpEngine.Control().apply { cancel() }
+
+        try {
+            ResumableHttpEngine().download(url(), destination, control)
+            throw AssertionError("Expected cancellation")
+        } catch (_: ResumableHttpEngine.CancelledException) {
+            // Expected: cancellation is destructive and cannot leave resumable metadata behind.
+        }
+
+        assertTrue(!partial.exists())
+        assertTrue(!metadataFile.exists())
+        assertTrue(!destination.exists())
+    }
+
+    @Test
     fun resumesFromPartialWhenValidatorAndRangeMatch() {
         val destination = File(root, "sample.bin")
         val partial = File(root, "sample.bin.part")
