@@ -24,7 +24,8 @@ internal object MediaArtifactTools {
         val mimeType: String = "",
         val qualityHeight: Int? = null,
         val bitrateKbps: Int? = null,
-        val format: String = ""
+        val format: String = "",
+        val fileSizeBytes: Long? = null
     ) {
         val qualityLabel: String
             get() = when {
@@ -124,23 +125,27 @@ internal object MediaArtifactTools {
           if (!out.has(key)) out.set(key, {url:key, title:(title || '').trim(), mimeType:mime || ''});
         } catch (_) {}
       };
-      const fileLike = /\.(?:avif|bmp|csv|docx?|dmg|epub|flac|gif|gz|html?|jpeg|jpg|json|m4a|m4v|m3u8|mkv|mov|mp3|mp4|mpd|msi|odp|ods|odt|ogg|pdf|png|pptx?|rar|rtf|svg|tar|tif|tiff|txt|wav|webm|webp|xls[xm]?|xml|xz|ya?ml|7z|zip|apk|exe)(?:$|[?#])/i;
-      document.querySelectorAll('a[href], img[src], img[srcset], video[src], video[poster], audio[src], source[src], track[src], iframe[src], embed[src], object[data], link[rel="download"][href]').forEach(el => {
+      const fileLike = /\.(?:avif|bmp|csv|doc|docx|epub|flac|gif|jpeg|jpg|m4a|m4v|mkv|mov|mp3|mp4|ogg|pdf|png|ppt|pptx|rtf|svg|tif|tiff|txt|wav|webm|webp|xls|xlsx|odt|ods|odp|zip|rar|7z)(?:$|[?#])/i;
+      document.querySelectorAll('a[href], img[src], img[srcset], video[src], audio[src], source[src], link[rel="download"][href]').forEach(el => {
         const tag = el.tagName.toLowerCase();
-        const title = el.getAttribute('download') || el.getAttribute('aria-label') ||
-          el.getAttribute('title') || el.getAttribute('alt') || el.innerText || '';
         const declaredMime = el.getAttribute('type') || '';
         const href = el.getAttribute('href') || '';
+        const title = el.getAttribute('download') || el.getAttribute('alt') ||
+          el.getAttribute('title') || el.getAttribute('aria-label') || '';
         if (tag === 'a' && !el.hasAttribute('download') && !fileLike.test(href) &&
             !/^(?:image|video|audio)\//i.test(declaredMime) &&
-            !/application\/(?:pdf|zip|x-7z|vnd\.|msword)/i.test(declaredMime)) return;
-        const inferredMime = declaredMime || (tag === 'img' ? 'image/*' : tag === 'video' ? 'video/*' : tag === 'audio' ? 'audio/*' : '');
-        ['href','src','poster','data'].forEach(attr => {
+            !/application\/(?:pdf|msword|vnd\.openxmlformats|vnd\.ms-|vnd\.oasis)/i.test(declaredMime)) return;
+        const inferredMime = declaredMime || (tag === 'img' ? 'image/*' : tag === 'video' || tag === 'source' ? 'video/*' : tag === 'audio' ? 'audio/*' : '');
+        if (tag === 'img') {
+          const width = el.naturalWidth || el.width || 0;
+          const height = el.naturalHeight || el.height || 0;
+          if (width > 0 && height > 0 && width < 160 && height < 120) return;
+        }
+        ['href','src'].forEach(attr => {
           if (!el.getAttribute(attr)) return;
-          const itemMime = attr === 'poster' ? 'image/*' : inferredMime;
-          add(el.getAttribute(attr), title, itemMime);
+          add(el.getAttribute(attr), title || document.title, inferredMime);
         });
-        if (el.getAttribute('srcset')) el.getAttribute('srcset').split(',').forEach(item => add(item.trim().split(/\s+/)[0], title, mime));
+        if (el.getAttribute('srcset')) el.getAttribute('srcset').split(',').forEach(item => add(item.trim().split(/\s+/)[0], title || document.title, 'image/*'));
       });
       document.querySelectorAll('video').forEach(v => {
         if (v.currentSrc) add(v.currentSrc, v.getAttribute('title') || document.title, 'video/*');
