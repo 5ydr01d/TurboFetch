@@ -126,7 +126,7 @@ internal object MediaArtifactTools {
           if (!out.has(key)) out.set(key, {url:key, title:(title || '').trim(), mimeType:mime || ''});
         } catch (_) {}
       };
-      const fileLike = /\.(?:avif|bmp|csv|doc|docx|epub|flac|gif|jpeg|jpg|m4a|m4v|mkv|mov|mp3|mp4|ogg|pdf|png|ppt|pptx|rtf|svg|tif|tiff|txt|wav|webm|webp|xls|xlsx|odt|ods|odp|zip|rar|7z)(?:$|[?#])/i;
+      const fileLike = /\.(?:aac|avi|avif|bmp|csv|doc|docx|epub|flac|gif|ics|jpeg|jpg|json|m3u8|m4a|m4v|mkv|mov|mp3|mp4|mpd|ogg|opus|pdf|png|ppt|pptx|rtf|svg|tar|tif|tiff|ts|txt|wav|webm|webp|xls|xlsx|xml|yaml|yml|odt|ods|odp|zip|rar|7z)(?:$|[?#])/i;
       document.querySelectorAll('a[href], img[src], img[srcset], video[src], audio[src], source[src], link[rel="download"][href]').forEach(el => {
         const tag = el.tagName.toLowerCase();
         const declaredMime = el.getAttribute('type') || '';
@@ -136,7 +136,10 @@ internal object MediaArtifactTools {
         if (tag === 'a' && !el.hasAttribute('download') && !fileLike.test(href) &&
             !/^(?:image|video|audio)\//i.test(declaredMime) &&
             !/application\/(?:pdf|msword|vnd\.openxmlformats|vnd\.ms-|vnd\.oasis)/i.test(declaredMime)) return;
-        const inferredMime = declaredMime || (tag === 'img' ? 'image/*' : tag === 'video' || tag === 'source' ? 'video/*' : tag === 'audio' ? 'audio/*' : '');
+        const parentTag = el.parentElement && el.parentElement.tagName.toLowerCase();
+        const inferredMime = declaredMime || (tag === 'img' ? 'image/*' :
+          tag === 'video' || (tag === 'source' && parentTag === 'video') ? 'video/*' :
+          tag === 'audio' || (tag === 'source' && parentTag === 'audio') ? 'audio/*' : '');
         if (tag === 'img') {
           const width = el.naturalWidth || el.width || 0;
           const height = el.naturalHeight || el.height || 0;
@@ -153,8 +156,8 @@ internal object MediaArtifactTools {
       // so inspect resource timing entries for the underlying manifest URL instead.
       document.querySelectorAll('video').forEach(v => {
         const title = v.getAttribute('title') || v.getAttribute('aria-label') || document.title;
-        const streamMime = url => /\\.mpd(?:$|[?#])/i.test(url) ? 'application/dash+xml' :
-          /\\.m3u8(?:$|[?#])/i.test(url) ? 'application/vnd.apple.mpegurl' : 'video/*';
+        const streamMime = url => /\.mpd(?:$|[?#])/i.test(url) ? 'application/dash+xml' :
+          /\.m3u8(?:$|[?#])/i.test(url) ? 'application/vnd.apple.mpegurl' : 'video/*';
         if (v.currentSrc && !v.currentSrc.startsWith('blob:')) add(v.currentSrc, title, streamMime(v.currentSrc));
         v.querySelectorAll('source[src]').forEach(source => add(source.src, title, streamMime(source.src) === 'video/*' ? (source.type || 'video/*') : streamMime(source.src)));
       });
