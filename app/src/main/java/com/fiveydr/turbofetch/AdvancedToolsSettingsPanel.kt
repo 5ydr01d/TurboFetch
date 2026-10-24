@@ -359,7 +359,7 @@ internal fun AdvancedToolsSettingsPanel(
                 Button(onClick = { onQueueText(batchText, "Batch download", emptyMap(), true, null) }, modifier = Modifier.fillMaxWidth()) { Text("Queue all links in text") }
                 OutlinedButton(onClick = { importLauncher.launch(arrayOf("text/plain", "text/*", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) { Text("Import links from a text file") }
                 OutlinedButton(onClick = {
-                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     val clip = clipboard.primaryClip
                     val copied = if (clip != null && clip.itemCount > 0) clip.getItemAt(0).coerceToText(context).toString() else ""
                     if (copied.isBlank()) Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
@@ -456,6 +456,4 @@ internal fun AdvancedToolsSettingsPanel(
                 Text("Checksums help confirm a file has not changed; they do not prove that a file is safe.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-    }
-}
 }
