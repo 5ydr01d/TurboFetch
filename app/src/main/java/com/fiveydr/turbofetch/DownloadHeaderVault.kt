@@ -47,6 +47,9 @@ internal object DownloadHeaderVault {
         require(entries.size <= MAX_HEADER_COUNT) { "Too many request headers" }
 
         val payload = encodeHeaders(entries)
+        require(payload.size + IV_SIZE_BYTES + AUTH_TAG_BITS / 8 <= MAX_ENVELOPE_BYTES) {
+            "Encrypted request headers are too large"
+        }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key)
         cipher.updateAAD(associatedData.toByteArray(StandardCharsets.UTF_8))
