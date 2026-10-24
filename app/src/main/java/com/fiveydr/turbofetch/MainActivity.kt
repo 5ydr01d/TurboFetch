@@ -205,19 +205,30 @@ class MainActivity : ComponentActivity() {
         setIntent(Intent(sourceIntent).apply {
             removeExtra("com.fiveydr.turbofetch.extra.DOWNLOAD_URL")
         })
+
+        // Browser credentials are needed for this transfer only. Never copy cookies into long-lived
+        // tool preferences, where a later unrelated download could accidentally reuse them.
         val userAgent = sourceIntent.getStringExtra("com.fiveydr.turbofetch.extra.USER_AGENT").orEmpty()
         val referer = sourceIntent.getStringExtra("com.fiveydr.turbofetch.extra.REFERER").orEmpty()
         val cookie = sourceIntent.getStringExtra("com.fiveydr.turbofetch.extra.COOKIE").orEmpty()
-        preferences.edit()
-            .putString("tool_user_agent", userAgent)
-            .putString("tool_referer", referer)
-            .putString("tool_cookie", cookie)
-            .apply()
+        val contentDisposition = sourceIntent.getStringExtra("com.fiveydr.turbofetch.extra.CONTENT_DISPOSITION").orEmpty()
+        val mimeType = sourceIntent.getStringExtra("com.fiveydr.turbofetch.extra.MIME_TYPE").orEmpty()
+        val oneTimeHeaders = buildMap {
+            userAgent.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
+            referer.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
+            cookie.takeIf { it.isNotBlank() }?.let { put("Cookie", it) }
+        }
+        val suggestedFileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType)
         window.decorView.post {
-            queueToolText(url, "Feather Browser download")
+            queueToolText(
+                url,
+                "Feather Browser download",
+                extraHeaders = oneTimeHeaders,
+                useSavedHeaders = false,
+                suggestedFileName = suggestedFileName
+            )
         }
     }
-
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun TurboFetchApp(
@@ -926,19 +937,27 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun queueToolText(text: String, description: String, extraHeaders: Map<String, String> = emptyMap()) {
+    private fun queueToolText(
+        text: String,
+        description: String,
+        extraHeaders: Map<String, String> = emptyMap(),
+        useSavedHeaders: Boolean = true,
+        suggestedFileName: String? = null
+    ) {
         val urls = DownloadLinkTools.extractUrls(text)
         if (urls.isEmpty()) { Toast.makeText(this, "No valid HTTP/HTTPS links found", Toast.LENGTH_SHORT).show(); return }
         val currentRows = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
         val used = mutableSetOf<String>()
         for (i in 0 until currentRows.length()) used.add(currentRows.optJSONObject(i)?.optString("title").orEmpty().lowercase(Locale.ROOT))
         val headers = linkedMapOf<String, String>()
-        preferences.getString("tool_user_agent", "").orEmpty().takeIf { it.isNotBlank() }?.let { headers["User-Agent"] = it.trim() }
-        preferences.getString("tool_referer", "").orEmpty().takeIf { it.isNotBlank() }?.let { headers["Referer"] = it.trim() }
-        preferences.getString("tool_cookie", "").orEmpty().takeIf { it.isNotBlank() }?.let { headers["Cookie"] = it.trim() }
+        if (useSavedHeaders) {
+            preferences.getString("tool_user_agent", "").orEmpty().takeIf { it.isNotBlank() }?.let { headers["User-Agent"] = it.trim() }
+            preferences.getString("tool_referer", "").orEmpty().takeIf { it.isNotBlank() }?.let { headers["Referer"] = it.trim() }
+            preferences.getString("tool_cookie", "").orEmpty().takeIf { it.isNotBlank() }?.let { headers["Cookie"] = it.trim() }
+        }
         extraHeaders.forEach { (key, value) -> if (key.isNotBlank() && value.isNotBlank()) headers[key] = value }
         urls.forEach { url ->
-            var title = DownloadLinkTools.fileNameFromUrl(url)
+            var title = if (urls.size == 1 && !suggestedFileName.isNullOrBlank()) sanitizeFileName(suggestedFileName) else DownloadLinkTools.fileNameFromUrl(url)
             if (title.lowercase(Locale.ROOT) in used) {
                 val dot = title.lastIndexOf('.')
                 val stem = if (dot > 0) title.substring(0, dot) else title
