@@ -28,6 +28,20 @@ internal object DownloadLinkTools {
         return safe.take(180).ifBlank { "download.bin" }
     }
 
+    /**
+     * Keeps in-progress transfer files isolated per queue item. Display names may legitimately
+     * repeat, but their .part, validator, and segmented scratch files must never collide.
+     */
+    fun transferFileName(downloadId: Long, displayName: String): String {
+        val safe = displayName
+            .replace(Regex("""[\\/:*?"<>|\\p{Cntrl}]"""), "_")
+            .trim()
+            .trim('.')
+            .take(180)
+            .ifBlank { "download.bin" }
+        return "${downloadId}-${safe}"
+    }
+
     fun likelyMediaOrFile(value: String): Boolean {
         val uri = runCatching { URI(value) }.getOrNull() ?: return false
         val path = uri.path.orEmpty().lowercase()
