@@ -380,7 +380,16 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     AppTab.Files -> {
-                        SectionHeader("Downloaded files", "$filesRows.size available in history")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("Download library", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                Text("${filesRows.size} completed files", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            FilterChip(selected = tab == AppTab.Home, onClick = { tab = AppTab.Home }, label = { Text("Queue") })
+                        }
                         OutlinedTextField(
                             value = search,
                             onValueChange = { search = it },
