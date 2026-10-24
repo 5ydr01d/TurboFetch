@@ -398,8 +398,8 @@ class CustomDownloadService : Service() {
             .firstOrNull { it.optLong("id") == id }
     }
 
-    private fun readRows() = JSONArray(prefs.getString("downloads", "[]") ?: "[]")
-    private fun writeRows(rows: JSONArray) { prefs.edit().putString("downloads", rows.toString()).apply() }
+    private fun readRows() = DownloadQueueStore.snapshot(prefs)
+    private fun writeRows(rows: JSONArray) { DownloadQueueStore.replace(prefs, rows) }
 
     private fun safeName(value: String): String {
         val cleaned = value.replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "_").trim().trim('.')

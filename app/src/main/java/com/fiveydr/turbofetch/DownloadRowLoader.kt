@@ -13,7 +13,7 @@ internal class DownloadRowLoader(
     private val downloadManager: DownloadManager,
 ) {
     fun loadRows(): List<DownloadRow> {
-        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+        val saved = DownloadQueueStore.snapshot(preferences)
         val result = mutableListOf<DownloadRow>()
         for (i in 0 until saved.length()) {
             val item = saved.optJSONObject(i) ?: continue

@@ -18,7 +18,7 @@ internal object DownloadQueueScheduler {
     @Synchronized
     fun add(context: Context, url: String, title: String, description: String, headers: Map<String, String> = emptyMap()) {
         val preferences = context.applicationContext.getSharedPreferences("turbofetch", Context.MODE_PRIVATE)
-        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+        val saved = DownloadQueueStore.snapshot(preferences)
         val usedIds = (0 until saved.length()).mapNotNull { saved.optJSONObject(it)?.optLong("id") }.toSet()
         var localId = -System.currentTimeMillis().coerceAtLeast(1L)
         while (localId in usedIds) localId--
@@ -42,19 +42,19 @@ internal object DownloadQueueScheduler {
                     }
                 }
         )
-        preferences.edit().putString("downloads", saved.toString()).apply()
+        DownloadQueueStore.replace(preferences, saved)
     }
 
     @Synchronized
     fun requeue(context: Context, id: Long) {
         val preferences = context.applicationContext.getSharedPreferences("turbofetch", Context.MODE_PRIVATE)
-        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+        val saved = DownloadQueueStore.snapshot(preferences)
         for (i in 0 until saved.length()) {
             val item = saved.optJSONObject(i) ?: continue
             if (item.optLong("id") == id && item.optBoolean("custom", false)) {
                 item.put("phase", CustomDownloadService.PHASE_WAITING)
                     .put("reason", "")
-                preferences.edit().putString("downloads", saved.toString()).apply()
+                DownloadQueueStore.replace(preferences, saved)
                 return
             }
         }
@@ -63,13 +63,13 @@ internal object DownloadQueueScheduler {
     @Synchronized
     fun remove(context: Context, id: Long) {
         val preferences = context.applicationContext.getSharedPreferences("turbofetch", Context.MODE_PRIVATE)
-        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+        val saved = DownloadQueueStore.snapshot(preferences)
         val updated = JSONArray()
         for (i in 0 until saved.length()) {
             val item = saved.optJSONObject(i) ?: continue
             if (item.optLong("id") != id) updated.put(item)
         }
-        preferences.edit().putString("downloads", updated.toString()).apply()
+        DownloadQueueStore.replace(preferences, updated)
     }
 
     @Synchronized
@@ -77,7 +77,7 @@ internal object DownloadQueueScheduler {
         val appContext = context.applicationContext
         val preferences = appContext.getSharedPreferences("turbofetch", Context.MODE_PRIVATE)
         val downloadManager = appContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+        val saved = DownloadQueueStore.snapshot(preferences)
         val limit = preferences.getInt("max_concurrent_downloads", 3).coerceIn(1, 5)
         val managedActive = countManagedActive(saved, downloadManager)
         val waitingItems = mutableListOf<JSONObject>()
@@ -109,7 +109,7 @@ internal object DownloadQueueScheduler {
                 changed = true
             }
         }
-        if (changed) preferences.edit().putString("downloads", saved.toString()).apply()
+        if (changed) DownloadQueueStore.replace(preferences, saved)
     }
 
     private fun countManagedActive(saved: JSONArray, manager: DownloadManager): Int {
