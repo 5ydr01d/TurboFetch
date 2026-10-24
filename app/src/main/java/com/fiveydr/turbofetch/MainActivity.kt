@@ -184,6 +184,35 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        handleBrowserDownloadIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleBrowserDownloadIntent(intent)
+    }
+
+    private fun handleBrowserDownloadIntent(sourceIntent: Intent?) {
+        if (sourceIntent?.action != "com.fiveydr.turbofetch.action.BROWSER_DOWNLOAD") return
+        val url = sourceIntent.getStringExtra("com.fiveydr.turbofetch.extra.DOWNLOAD_URL")
+            ?.takeIf { it.startsWith("https://", true) || it.startsWith("http://", true) }
+            ?: return
+        // Consume the handoff marker so activity recreation cannot enqueue the same file twice.
+        setIntent(Intent(sourceIntent).apply {
+            removeExtra("com.fiveydr.turbofetch.extra.DOWNLOAD_URL")
+        })
+        val userAgent = sourceIntent.getStringExtra("com.fiveydr.turbofetch.extra.USER_AGENT").orEmpty()
+        val referer = sourceIntent.getStringExtra("com.fiveydr.turbofetch.extra.REFERER").orEmpty()
+        val cookie = sourceIntent.getStringExtra("com.fiveydr.turbofetch.extra.COOKIE").orEmpty()
+        preferences.edit()
+            .putString("tool_user_agent", userAgent)
+            .putString("tool_referer", referer)
+            .putString("tool_cookie", cookie)
+            .apply()
+        window.decorView.post {
+            queueToolText(url, "Feather Browser download")
+        }
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
