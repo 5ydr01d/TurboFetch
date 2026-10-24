@@ -256,12 +256,27 @@ class CustomDownloadService : Service() {
                     // This drops cookies/authorization from persisted queue metadata.
                     it.remove("headers")
                     it.remove("headersEncrypted")
+                    it.remove("resumeRequested")
                 }
                 result.file.delete()
             } catch (_: ResumableHttpEngine.PausedException) {
-                updateRow(id) { it.put("phase", PHASE_PAUSED).put("reason", "Paused · partial data saved for resume") }
+                // Resume can be tapped while the engine is unwinding a pause exception. If the
+                // control has already been cleared or the UI persisted a resume request, queue
+                // the saved partial again instead of overwriting that request with PAUSED.
+                val resumedMeanwhile = !control.isPaused() ||
+                    findRow(id)?.optBoolean("resumeRequested", false) == true
+                updateRow(id) {
+                    it.remove("resumeRequested")
+                    it.put(
+                        "phase",
+                        if (resumedMeanwhile) PHASE_WAITING else PHASE_PAUSED
+                    ).put(
+                        "reason",
+                        if (resumedMeanwhile) "Resuming from saved partial data" else "Paused · partial data saved for resume"
+                    )
+                }
             } catch (_: ResumableHttpEngine.CancelledException) {
-                updateRow(id) { it.put("phase", PHASE_CANCELLED).put("reason", "Cancelled") }
+                updateRow(id) { it.put("phase", PHASE_CANCELLED).put("reason", "Cancelled").also { row -> row.remove("resumeRequested") } }
             } catch (error: CancellationException) {
                 val paused = control.isPaused()
                 updateRow(id) {
@@ -277,6 +292,7 @@ class CustomDownloadService : Service() {
                         .put("failureType", details.category)
                         .put("failedAt", System.currentTimeMillis())
                         .put("lastError", details.technicalDetails)
+                    it.remove("resumeRequested")
                 }
             } finally {
                 jobs.remove(id)
@@ -362,10 +378,28 @@ class CustomDownloadService : Service() {
     }
 
     private fun resume(id: Long) {
+        val activeControl = controls[id]
+        val activeJob = jobs[id]
+        if (activeControl != null && activeJob?.isActive == true) {
+            activeControl.resume()
+            updateRow(id) {
+                if (it.optString("phase") == PHASE_PAUSED ||
+                    it.optString("phase") == PHASE_FAILED ||
+                    it.optString("phase") == PHASE_DOWNLOADING
+                ) {
+                    it.put("phase", PHASE_DOWNLOADING)
+                        .put("reason", "")
+                        .put("resumeRequested", true)
+                }
+            }
+            updateNotification()
+            return
+        }
         updateRow(id) {
             if (it.optString("phase") == PHASE_PAUSED || it.optString("phase") == PHASE_FAILED) {
                 it.put("phase", PHASE_WAITING).put("reason", "")
             }
+            it.remove("resumeRequested")
         }
         scheduleQueue()
     }
