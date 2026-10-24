@@ -156,6 +156,9 @@ class CustomDownloadService : Service() {
                         .put("bytesPerSecond", 0)
                         .put("completedAt", System.currentTimeMillis())
                         .put("reason", "")
+                    // Request headers are no longer needed once the transfer is complete.
+                    // This drops cookies/authorization from persisted queue metadata.
+                    it.remove("headers")
                 }
                 result.file.delete()
             } catch (_: ResumableHttpEngine.PausedException) {
