@@ -843,7 +843,7 @@ class MainActivity : ComponentActivity() {
                         else { batchText = copied; queueToolText(copied, "Clipboard import") }
                     }, modifier = Modifier.fillMaxWidth()) { Text("Import links from clipboard") }
                     OutlinedButton(onClick = {
-                        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+                        val saved = DownloadQueueStore.snapshot(preferences)
                         pendingToolExport = (0 until saved.length()).mapNotNull { saved.optJSONObject(it)?.optString("url") }
                             .filter { DownloadLinkTools.isHttpUrl(it) }.distinct().joinToString("\n", postfix = if (saved.length() > 0) "\n" else "")
                         if (pendingToolExport.isBlank()) Toast.makeText(this@MainActivity, "There are no download URLs to export", Toast.LENGTH_SHORT).show()
@@ -1000,7 +1000,7 @@ class MainActivity : ComponentActivity() {
     ) {
         val urls = DownloadLinkTools.extractUrls(text)
         if (urls.isEmpty()) { Toast.makeText(this, "No valid HTTP/HTTPS links found", Toast.LENGTH_SHORT).show(); return }
-        val currentRows = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+        val currentRows = DownloadQueueStore.snapshot(preferences)
         val used = mutableSetOf<String>()
         for (i in 0 until currentRows.length()) used.add(currentRows.optJSONObject(i)?.optString("title").orEmpty().lowercase(Locale.ROOT))
         val headers = linkedMapOf<String, String>()
@@ -1039,32 +1039,38 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun controlAllToolDownloads(resume: Boolean) {
-        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
-        val ids = mutableListOf<Long>()
-        for (i in 0 until saved.length()) {
-            val item = saved.optJSONObject(i) ?: continue
-            if (!item.optBoolean("custom", false)) continue
-            val phase = item.optString("phase")
-            if (resume && (phase == CustomDownloadService.PHASE_PAUSED || phase == CustomDownloadService.PHASE_FAILED)) {
-                item.put("phase", CustomDownloadService.PHASE_WAITING).put("reason", "")
-                ids.add(item.optLong("id"))
-            } else if (!resume && (phase == CustomDownloadService.PHASE_DOWNLOADING || phase == CustomDownloadService.PHASE_WAITING)) ids.add(item.optLong("id"))
+        val ids = DownloadQueueStore.transaction(preferences) { saved ->
+            val selected = mutableListOf<Long>()
+            for (i in 0 until saved.length()) {
+                val item = saved.optJSONObject(i) ?: continue
+                if (!item.optBoolean("custom", false)) continue
+                val phase = item.optString("phase")
+                if (resume && (phase == CustomDownloadService.PHASE_PAUSED || phase == CustomDownloadService.PHASE_FAILED)) {
+                    item.put("phase", CustomDownloadService.PHASE_WAITING).put("reason", "")
+                    selected.add(item.optLong("id"))
+                } else if (!resume && (phase == CustomDownloadService.PHASE_DOWNLOADING || phase == CustomDownloadService.PHASE_WAITING)) {
+                    selected.add(item.optLong("id"))
+                }
+            }
+            selected
         }
-        preferences.edit().putString("downloads", saved.toString()).apply()
         ids.forEach { CustomDownloadService.start(this, if (resume) CustomDownloadService.ACTION_RESUME else CustomDownloadService.ACTION_PAUSE, it) }
         CustomDownloadService.start(this)
         Toast.makeText(this, if (resume) "Resume/retry requested for ${ids.size} downloads" else "Pause requested for ${ids.size} downloads", Toast.LENGTH_SHORT).show()
     }
 
     private fun clearToolCompletedHistory() {
-        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
-        val keep = JSONArray()
-        var removed = 0
-        for (i in 0 until saved.length()) {
-            val item = saved.optJSONObject(i) ?: continue
-            if (item.optString("phase") == CustomDownloadService.PHASE_COMPLETE || item.optString("phase") == "complete") removed++ else keep.put(item)
+        val removed = DownloadQueueStore.transaction(preferences) { saved ->
+            var count = 0
+            for (index in saved.length() - 1 downTo 0) {
+                val item = saved.optJSONObject(index) ?: continue
+                if (item.optString("phase") == CustomDownloadService.PHASE_COMPLETE || item.optString("phase") == "complete") {
+                    saved.remove(index)
+                    count++
+                }
+            }
+            count
         }
-        preferences.edit().putString("downloads", keep.toString()).apply()
         Toast.makeText(this, "Removed $removed completed history entries. Downloaded files were not deleted.", Toast.LENGTH_SHORT).show()
     }
 
@@ -1203,7 +1209,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun deletePartialTransfer(id: Long) {
-        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+        val saved = DownloadQueueStore.snapshot(preferences)
         for (i in 0 until saved.length()) {
             val item = saved.optJSONObject(i) ?: continue
             if (item.optLong("id") != id) continue
@@ -1254,7 +1260,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun uriForDownload(id: Long): Uri? {
-        val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
+        val saved = DownloadQueueStore.snapshot(preferences)
         for (i in 0 until saved.length()) {
             val item = saved.optJSONObject(i) ?: continue
             if (item.optLong("id") != id) continue
