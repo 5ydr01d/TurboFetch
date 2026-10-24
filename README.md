@@ -2,6 +2,8 @@
 
 TurboFetch is an ad-free, privacy-first Android download manager built with Kotlin and Jetpack Compose.
 
+See [the architecture guide](docs/ARCHITECTURE.md) for component responsibilities, queue-storage invariants, and release validation requirements.
+
 ## Current development build
 
 - Redesigned Material 3 interface with Home, Downloads, Files, and Settings destinations.
