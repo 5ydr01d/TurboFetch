@@ -783,6 +783,9 @@ class MainActivity : ComponentActivity() {
         extraHeaders.forEach { (key, value) -> if (key.isNotBlank() && value.isNotBlank()) headers[key] = value }
         urls.forEach { url ->
             var title = if (urls.size == 1 && !suggestedFileName.isNullOrBlank()) sanitizeFileName(suggestedFileName) else DownloadLinkTools.fileNameFromUrl(url)
+            if (HlsDownloadEngine.isCandidate(url) && title.endsWith(".m3u8", ignoreCase = true)) {
+                title = title.dropLast(5) + ".ts"
+            }
             if (title.lowercase(Locale.ROOT) in used) {
                 val dot = title.lastIndexOf('.')
                 val stem = if (dot > 0) title.substring(0, dot) else title
@@ -933,7 +936,10 @@ class MainActivity : ComponentActivity() {
             ?.substringAfterLast('/')
             ?.takeIf { it.isNotBlank() }
             ?: "download-${System.currentTimeMillis()}.bin"
-        return sanitizeFileName(raw)
+        val safeName = sanitizeFileName(raw)
+        return if (HlsDownloadEngine.isCandidate(uri.toString()) && safeName.endsWith(".m3u8", ignoreCase = true)) {
+            safeName.dropLast(5) + ".ts"
+        } else safeName
     }
 
     private fun uniqueTitle(baseName: String, rows: List<DownloadRow>): String {
