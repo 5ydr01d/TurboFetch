@@ -23,7 +23,6 @@ internal object VideoSiteExtractor {
         val hasAudio: Boolean,
         val fileSize: Long
     ) {
-        val queueable: Boolean get() = hasAudio && (hasVideo || !hasVideo)
     }
 
     data class Inspection(val title: String, val formats: List<Format>)
