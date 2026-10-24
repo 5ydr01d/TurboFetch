@@ -251,20 +251,20 @@ fun UniversalArtifactFinderDialog(
 }
 
 private fun probeContentLength(url: String): Long? {
-    var connection: HttpURLConnection? = null
+    val connection = (URL(url).openConnection() as? HttpURLConnection) ?: return null
     return try {
-        connection = (URL(url).openConnection() as? HttpURLConnection) ?: return null
         connection.requestMethod = "HEAD"
         connection.connectTimeout = 2500
         connection.readTimeout = 2500
         connection.instanceFollowRedirects = true
         connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36")
         connection.connect()
-        connection.contentLengthLong.takeIf { connection.responseCode in 200..299 && it > 0L }
+        val size = connection.contentLengthLong
+        if (connection.responseCode in 200..299 && size > 0L) size else null
     } catch (_: Exception) {
         null
     } finally {
-        connection?.disconnect()
+        connection.disconnect()
     }
 }
 
