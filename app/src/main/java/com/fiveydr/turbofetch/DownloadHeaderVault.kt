@@ -35,6 +35,12 @@ internal object DownloadHeaderVault {
     fun decrypt(envelope: String, associatedData: String): Map<String, String> =
         decryptWithKey(envelope, associatedData, getOrCreateKey())
 
+    fun encryptToolSettings(headers: Map<String, String>): String =
+        encrypt(headers, "turbofetch-tool-header-settings-v1")
+
+    fun decryptToolSettings(envelope: String): Map<String, String> =
+        decrypt(envelope, "turbofetch-tool-header-settings-v1")
+
     /** Injectable key form keeps the cryptographic envelope testable without Android Keystore. */
     internal fun encryptWithKey(
         headers: Map<String, String>,
