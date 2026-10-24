@@ -77,7 +77,7 @@ class AdvancedToolsActivity : ComponentActivity() {
 
         addText(column, "TurboFetch tools", 25f, true)
         addText(column, "Browser · batch links · scheduler · transfer controls · checksums", 13f, false)
-        addButton(column, "Open built-in browser") { startActivity(Intent(this, TurboBrowserActivity::class.java)) }
+        addButton(column, "Open built-in browser") { startActivity(Intent(this, com.example.MainActivity::class.java)) }
 
         section(column, "Add and batch")
         urlInput = editText(column, "Direct URL (HTTP/HTTPS)", prefs.getString("last_tool_url", "").orEmpty())
