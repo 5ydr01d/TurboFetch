@@ -515,6 +515,7 @@ class MainActivity : ComponentActivity() {
         var selectedVideoFormatUrl by remember { mutableStateOf("") }
         var videoFormatStatus by remember { mutableStateOf("Paste a supported video-page URL to inspect available direct formats.") }
         var inspectingVideoFormats by remember { mutableStateOf(false) }
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionHeader("Advanced tools", "Direct downloads, queue utilities, and transfer controls")
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
