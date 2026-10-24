@@ -236,7 +236,7 @@ class CustomDownloadService : Service() {
                     result.file.delete()
                     throw ResumableHttpEngine.CancelledException(result.file)
                 }
-                val completedTitle = if (HlsDownloadEngine.isCandidate(url)) {
+                val completedTitle = if (HlsDownloadEngine.isCandidate(url) || DashDownloadEngine.isCandidate(url)) {
                     val stem = title.substringBeforeLast('.', title).ifBlank { title }
                     val extension = result.file.extension.takeIf { it.isNotBlank() } ?: "ts"
                     "$stem.$extension"
@@ -384,10 +384,12 @@ class CustomDownloadService : Service() {
                 File(destination + ".part.properties").delete()
                 File(destination + ".segments.properties").delete()
                 File(destination + ".hls-work").deleteRecursively()
+                File(destination + ".dash-work").deleteRecursively()
                 base.parentFile?.listFiles()
                     ?.filter {
                         it.name.startsWith(base.name + ".segment-") ||
-                            it.name.startsWith(base.nameWithoutExtension + ".hls-output.")
+                            it.name.startsWith(base.nameWithoutExtension + ".hls-output.") ||
+                            it.name.startsWith(base.nameWithoutExtension + ".dash-output.")
                     }
                     ?.forEach { it.deleteRecursively() }
                 File(base.parentFile, base.name + ".assembling").delete()
