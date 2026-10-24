@@ -335,7 +335,7 @@ val patchFeatherPopupBlocker = tasks.register("patchFeatherPopupBlocker") {
                 "                                putExtra(\"com.fiveydr.turbofetch.extra.USER_AGENT\", userAgent.orEmpty())",
                 "                                putExtra(\"com.fiveydr.turbofetch.extra.CONTENT_DISPOSITION\", contentDisposition.orEmpty())",
                 "                                putExtra(\"com.fiveydr.turbofetch.extra.MIME_TYPE\", mimetype.orEmpty())",
-                "                                putExtra(\"com.fiveydr.turbofetch.extra.REFERER\", \"\")",
+                "                                putExtra(\"com.fiveydr.turbofetch.extra.REFERER\", webView.url.orEmpty())",
                 "                                putExtra(\"com.fiveydr.turbofetch.extra.COOKIE\", CookieManager.getInstance().getCookie(url).orEmpty())",
                 "                            }",
                 "                            handoff.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)",
