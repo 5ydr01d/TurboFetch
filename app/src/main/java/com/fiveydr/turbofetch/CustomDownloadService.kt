@@ -45,6 +45,7 @@ class CustomDownloadService : Service() {
         DownloadRuntimeOptions.refresh(this)
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, notification("Preparing download queue"))
+        migrateLegacyRequestHeaders()
         recoverInterruptedRows()
     }
 
@@ -72,6 +73,55 @@ class CustomDownloadService : Service() {
         controls.values.forEach { it.pause() }
         serviceScope.cancel()
         super.onDestroy()
+    }
+
+    /**
+     * Migrate older queue rows that stored request headers as readable JSON. Completed or
+     * cancelled rows no longer need credentials, so those headers are discarded instead.
+     */
+    private fun migrateLegacyRequestHeaders() {
+        synchronized(lock) {
+            val rows = readRows()
+            var changed = false
+            for (index in 0 until rows.length()) {
+                val row = rows.optJSONObject(index) ?: continue
+                val legacy = row.optJSONObject("headers") ?: continue
+                val phase = row.optString("phase")
+                if (phase == PHASE_COMPLETE || phase == PHASE_CANCELLED) {
+                    row.remove("headers")
+                    row.remove("headersEncrypted")
+                    changed = true
+                    continue
+                }
+                if (row.optString("headersEncrypted").isNotBlank()) {
+                    row.remove("headers")
+                    changed = true
+                    continue
+                }
+                val values = linkedMapOf<String, String>()
+                val keys = legacy.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val value = legacy.optString(key)
+                    if (key.isNotBlank() && value.isNotBlank()) values[key] = value
+                }
+                try {
+                    if (values.isNotEmpty()) {
+                        row.put("headersEncrypted", DownloadHeaderVault.encrypt(values))
+                    }
+                    row.remove("headers")
+                } catch (_: Exception) {
+                    // Fail closed if legacy credentials cannot be protected on this device.
+                    row.remove("headers")
+                    row.remove("headersEncrypted")
+                    row.put("phase", PHASE_FAILED)
+                        .put("failureType", "Credential storage")
+                        .put("reason", "Could not securely migrate saved request headers; re-add this download.")
+                }
+                changed = true
+            }
+            if (changed) writeRows(rows)
+        }
     }
 
     private fun scheduleQueue() {
