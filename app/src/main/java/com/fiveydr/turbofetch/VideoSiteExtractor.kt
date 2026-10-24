@@ -21,7 +21,8 @@ internal object VideoSiteExtractor {
         val bitrateKbps: Int,
         val hasVideo: Boolean,
         val hasAudio: Boolean,
-        val fileSize: Long
+        val fileSize: Long,
+        val headers: Map<String, String>
     ) {
     }
 
@@ -73,7 +74,14 @@ internal object VideoSiteExtractor {
             val bitrateText = if (bitrate > 0) " · ${bitrate} kb/s" else ""
             val label = listOf(quality, ext.uppercase(Locale.ROOT).ifBlank { "stream" }, type)
                 .joinToString(" · ") + bitrateText + sizeText
-            Format(id, label, directUrl, ext, height, bitrate, hasVideo, hasAudio, size)
+            val rawHeaders = read(raw, "httpHeaders", "http_headers") as? Map<*, *> ?: emptyMap<Any, Any>()
+            val allowedHeaders = setOf("user-agent", "referer", "origin", "cookie", "accept", "accept-language")
+            val headers = rawHeaders.entries.mapNotNull { entry ->
+                val key = entry.key?.toString()?.trim().orEmpty()
+                val value = entry.value?.toString()?.trim().orEmpty()
+                if (key.lowercase(Locale.ROOT) in allowedHeaders && value.isNotBlank()) key to value else null
+            }.toMap()
+            Format(id, label, directUrl, ext, height, bitrate, hasVideo, hasAudio, size, headers)
         }.distinctBy { it.url }
             // Keep audio-bearing formats: progressive video+audio or audio-only.
             .filter { it.hasAudio }
