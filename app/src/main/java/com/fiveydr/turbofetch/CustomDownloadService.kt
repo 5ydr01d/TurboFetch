@@ -121,7 +121,7 @@ class CustomDownloadService : Service() {
             updateRow(id) { it.put("phase", PHASE_FAILED).put("reason", "Cannot create download storage directory") }
             return
         }
-        val savedDestination = row.optString("destination").takeIf { it.isNotBlank() }?.let(::File)
+        val savedDestination = row.optString("destination").takeIf { it.isNotBlank() }?.let { File(it) }
         val destination = savedDestination ?: File(directory, DownloadLinkTools.transferFileName(id, title))
         val control = ResumableHttpEngine.Control()
         controls[id] = control
