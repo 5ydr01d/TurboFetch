@@ -164,7 +164,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        handleBrowserDownloadIntent(intent)
     }
 
     @OptIn(ExperimentalMaterial3Api::class)
