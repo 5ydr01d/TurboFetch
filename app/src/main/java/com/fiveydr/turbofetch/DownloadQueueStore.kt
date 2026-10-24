@@ -20,11 +20,11 @@ internal object DownloadQueueStore {
 
     /** Returns an independent snapshot, safe for read-only iteration outside the lock. */
     fun snapshot(preferences: SharedPreferences): JSONArray =
-        synchronized(monitor) { readLocked(preferences) }
+        synchronized(monitor) { readUnlocked(preferences) }
 
     /** Atomically replaces the stored queue using the same lock as service transitions. */
     fun replace(preferences: SharedPreferences, rows: JSONArray) {
-        synchronized(monitor) { writeLocked(preferences, rows) }
+        synchronized(monitor) { writeUnlocked(preferences, rows) }
     }
 
     /**
@@ -33,17 +33,16 @@ internal object DownloadQueueStore {
      */
     fun <T> transaction(preferences: SharedPreferences, change: (JSONArray) -> T): T =
         synchronized(monitor) {
-            val rows = readLocked(preferences)
+            val rows = readUnlocked(preferences)
             val result = change(rows)
-            writeLocked(preferences, rows)
+            writeUnlocked(preferences, rows)
             result
         }
 
-    /** Internal helpers for callers that already hold the shared queue monitor. */
-    internal fun readLocked(preferences: SharedPreferences): JSONArray =
+    private fun readUnlocked(preferences: SharedPreferences): JSONArray =
         JSONArray(preferences.getString(KEY_DOWNLOADS, EMPTY_QUEUE) ?: EMPTY_QUEUE)
 
-    internal fun writeLocked(preferences: SharedPreferences, rows: JSONArray) {
+    private fun writeUnlocked(preferences: SharedPreferences, rows: JSONArray) {
         preferences.edit().putString(KEY_DOWNLOADS, rows.toString()).apply()
     }
 }
