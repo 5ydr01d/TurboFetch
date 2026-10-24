@@ -515,6 +515,38 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        if (addDialogOpen) {
+            AlertDialog(
+                onDismissRequest = { addDialogOpen = false },
+                title = { Text("Add download") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = urlInput,
+                            onValueChange = { urlInput = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Direct download URL") },
+                            placeholder = { Text("https://example.com/file.zip") }
+                        )
+                        Text("HTTP and HTTPS links are supported. For video pages, use the video quality tool in Settings.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            enqueueDownload(urlInput, rows) {
+                                urlInput = ""
+                                rows = loadRows()
+                                addDialogOpen = false
+                            }
+                        },
+                        enabled = urlInput.isNotBlank()
+                    ) { Text("Add to queue") }
+                },
+                dismissButton = { TextButton(onClick = { addDialogOpen = false }) { Text("Cancel") } }
+            )
+        }
     }
 
     @Composable
