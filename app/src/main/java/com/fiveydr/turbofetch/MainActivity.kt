@@ -653,7 +653,7 @@ class MainActivity : ComponentActivity() {
                                 if (chosen == null) {
                                     videoFormatStatus = "Choose a format first."
                                 } else {
-                                    queueToolText(chosen.url, "Video site: ${videoSiteTitle} ${chosen.label}")
+                                    queueToolText(chosen.url, "Video site: ${videoSiteTitle} ${chosen.label}", chosen.headers)
                                     videoFormatStatus = "Selected direct stream sent to the TurboFetch queue. Some sites issue expiring URLs; queue it promptly."
                                 }
                             },
@@ -864,7 +864,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun queueToolText(text: String, description: String) {
+    private fun queueToolText(text: String, description: String, extraHeaders: Map<String, String> = emptyMap()) {
         val urls = DownloadLinkTools.extractUrls(text)
         if (urls.isEmpty()) { Toast.makeText(this, "No valid HTTP/HTTPS links found", Toast.LENGTH_SHORT).show(); return }
         val currentRows = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
@@ -874,6 +874,7 @@ class MainActivity : ComponentActivity() {
         preferences.getString("tool_user_agent", "").orEmpty().takeIf { it.isNotBlank() }?.let { headers["User-Agent"] = it.trim() }
         preferences.getString("tool_referer", "").orEmpty().takeIf { it.isNotBlank() }?.let { headers["Referer"] = it.trim() }
         preferences.getString("tool_cookie", "").orEmpty().takeIf { it.isNotBlank() }?.let { headers["Cookie"] = it.trim() }
+        extraHeaders.forEach { (key, value) -> if (key.isNotBlank() && value.isNotBlank()) headers[key] = value }
         urls.forEach { url ->
             var title = DownloadLinkTools.fileNameFromUrl(url)
             if (title.lowercase(Locale.ROOT) in used) {
