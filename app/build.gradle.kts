@@ -329,13 +329,14 @@ val patchFeatherPopupBlocker = tasks.register("patchFeatherPopupBlocker") {
             check(webViewSource.contains(downloadListenerAnchor)) { "Could not find Feather download listener insertion point" }
             val downloadHandoff = listOf(
                 "                            // Hand browser downloads directly to TurboFetch.",
+                "                            val currentPageUrl = this@apply.url.orEmpty()",
                 "                            val handoff = Intent(context, com.fiveydr.turbofetch.MainActivity::class.java).apply {",
                 "                                action = \"com.fiveydr.turbofetch.action.BROWSER_DOWNLOAD\"",
                 "                                putExtra(\"com.fiveydr.turbofetch.extra.DOWNLOAD_URL\", url)",
                 "                                putExtra(\"com.fiveydr.turbofetch.extra.USER_AGENT\", userAgent.orEmpty())",
                 "                                putExtra(\"com.fiveydr.turbofetch.extra.CONTENT_DISPOSITION\", contentDisposition.orEmpty())",
                 "                                putExtra(\"com.fiveydr.turbofetch.extra.MIME_TYPE\", mimetype.orEmpty())",
-                "                                putExtra(\"com.fiveydr.turbofetch.extra.REFERER\", this@apply.url.orEmpty())",
+                "                                putExtra(\"com.fiveydr.turbofetch.extra.REFERER\", currentPageUrl)",
                 "                                putExtra(\"com.fiveydr.turbofetch.extra.COOKIE\", CookieManager.getInstance().getCookie(url).orEmpty())",
                 "                            }",
                 "                            handoff.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)",
