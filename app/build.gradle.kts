@@ -150,8 +150,8 @@ val patchFeatherPopupBlocker = tasks.register("patchFeatherPopupBlocker") {
                 "                                        }",
                 "                                    }",
                 "                                }"
-            ).joinToString("\\n")
-            webViewSource = webViewSource.replace(pageFinishedAnchor, pageFinishedAnchor + "\\n" + autoScan)
+            ).joinToString("\n")
+            webViewSource = webViewSource.replace(pageFinishedAnchor, pageFinishedAnchor + "\n" + autoScan)
         }
         val downloadListenerAnchor = "                            viewModel.handleDownloadRequest(url, userAgent, contentDisposition, mimetype, contentLength)"
         if (!webViewSource.contains("com.fiveydr.turbofetch.action.BROWSER_DOWNLOAD")) {
