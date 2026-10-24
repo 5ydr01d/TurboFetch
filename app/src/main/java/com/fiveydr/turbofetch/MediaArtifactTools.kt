@@ -94,14 +94,14 @@ internal object MediaArtifactTools {
 
     /** Finds common resolution markers such as 2160p, 1080p, 720p or 480p. */
     fun qualityHeightFrom(text: String): Int? {
-        val match = Regex("""(?i)(?<!\\d)(2160|1440|1080|900|720|576|540|480|360|240|144)\\s*p\\b""")
+        val match = Regex("""(?i)(?<!\d)(2160|1440|1080|900|720|576|540|480|360|240|144)\s*p\b""")
             .find(text) ?: return null
         return match.groupValues[1].toIntOrNull()
     }
 
     /** Finds bitrate labels such as 128kbps or 1.5 Mbps. */
     fun bitrateFrom(text: String): Int? {
-        val match = Regex("""(?i)(\\d+(?:[.,]\\d+)?)\\s*(k|m)?\\s*bits?/s|(?i)(\\d+(?:[.,]\\d+)?)\\s*(kbps|mbps)""")
+        val match = Regex("""(?i)(\d+(?:[.,]\d+)?)\s*(k|m)?\s*bits?/s|(?i)(\d+(?:[.,]\d+)?)\s*(kbps|mbps)""")
             .find(text) ?: return null
         val number = (match.groupValues[1].ifBlank { match.groupValues[3] })
             .replace(',', '.').toDoubleOrNull() ?: return null
