@@ -76,7 +76,7 @@ internal class HlsDownloadEngine {
         requestHeaders: Map<String, String> = emptyMap(),
         onProgress: (ResumableHttpEngine.Progress) -> Unit = {}
     ): ResumableHttpEngine.Result {
-        val first = fetchManifest(sourceUrl, requestHeaders, control, destination)
+        val first = fetchManifest(sourceUrl, sourceUrl, requestHeaders, control, destination)
         if (!first.first.trimStart('\uFEFF', ' ', '\t', '\r', '\n').startsWith("#EXTM3U")) {
             throw IOException("The URL did not return a valid HLS playlist")
         }
@@ -118,6 +118,7 @@ internal class HlsDownloadEngine {
                             inFlight[index] = AtomicLong(0L)
                             downloadSegment(
                                 segment = segment,
+                                credentialOrigin = sourceUrl,
                                 target = target,
                                 workDir = workDir,
                                 control = control,
@@ -215,7 +216,7 @@ internal class HlsDownloadEngine {
             }
             val chosen = combinedAudioVariants.maxByOrNull { it.bandwidth }
                 ?: throw IOException("No directly downloadable HLS variant was found")
-            val next = fetchManifest(chosen.url, requestHeaders, control, destination)
+            val next = fetchManifest(chosen.url, requestedUrl, requestHeaders, control, destination)
             if (!next.first.trimStart('\uFEFF', ' ', '\t', '\r', '\n').startsWith("#EXTM3U")) {
                 throw IOException("The selected HLS variant did not return a valid playlist")
             }
@@ -316,6 +317,7 @@ internal class HlsDownloadEngine {
 
     private fun downloadSegment(
         segment: Segment,
+        credentialOrigin: String,
         target: File,
         workDir: File,
         control: ResumableHttpEngine.Control,
@@ -336,10 +338,11 @@ internal class HlsDownloadEngine {
                     instanceFollowRedirects = true
                     requestMethod = "GET"
                     setRequestProperty("Accept-Encoding", "identity")
-                    setRequestProperty("User-Agent", requestHeaders.entries.firstOrNull {
+                    val scopedHeaders = headersForTarget(credentialOrigin, segment.url, requestHeaders)
+                    setRequestProperty("User-Agent", scopedHeaders.entries.firstOrNull {
                         it.key.equals("User-Agent", true)
                     }?.value ?: "TurboFetch/1.0")
-                    DownloadRuntimeOptions.applyHeaders(this, requestHeaders)
+                    DownloadRuntimeOptions.applyHeaders(this, scopedHeaders)
                     if (segment.rangeOffset != null && segment.rangeLength != null) {
                         val end = segment.rangeOffset + segment.rangeLength - 1
                         setRequestProperty("Range", "bytes=" + segment.rangeOffset + "-" + end)
@@ -388,7 +391,7 @@ internal class HlsDownloadEngine {
                     throw IOException("HLS byte-range segment was incomplete")
                 }
                 if (segment.key != null) {
-                    val keyBytes = fetchKey(segment.key.url, requestHeaders, control, target)
+                    val keyBytes = fetchKey(segment.key.url, credentialOrigin, requestHeaders, control, target)
                     val iv = parseIv(segment.key.ivHex, segment.sequence)
                     decryptAes128(encrypted, tempPlain, keyBytes, iv)
                     encrypted.delete()
@@ -445,6 +448,7 @@ internal class HlsDownloadEngine {
 
     private fun fetchManifest(
         url: String,
+        credentialOrigin: String,
         headers: Map<String, String>,
         control: ResumableHttpEngine.Control,
         partialFile: File
@@ -458,8 +462,9 @@ internal class HlsDownloadEngine {
                 instanceFollowRedirects = true
                 requestMethod = "GET"
                 setRequestProperty("Accept-Encoding", "identity")
-                setRequestProperty("User-Agent", headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value ?: "TurboFetch/1.0")
-                DownloadRuntimeOptions.applyHeaders(this, headers)
+                val scopedHeaders = headersForTarget(credentialOrigin, url, headers)
+                setRequestProperty("User-Agent", scopedHeaders.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value ?: "TurboFetch/1.0")
+                DownloadRuntimeOptions.applyHeaders(this, scopedHeaders)
                 connect()
             }
             val code = connection.responseCode
@@ -485,6 +490,7 @@ internal class HlsDownloadEngine {
 
     private fun fetchKey(
         keyUrl: String,
+        credentialOrigin: String,
         headers: Map<String, String>,
         control: ResumableHttpEngine.Control,
         partialFile: File
@@ -498,8 +504,9 @@ internal class HlsDownloadEngine {
                 instanceFollowRedirects = true
                 requestMethod = "GET"
                 setRequestProperty("Accept-Encoding", "identity")
-                setRequestProperty("User-Agent", headers.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value ?: "TurboFetch/1.0")
-                DownloadRuntimeOptions.applyHeaders(this, headers)
+                val scopedHeaders = headersForTarget(credentialOrigin, keyUrl, headers)
+                setRequestProperty("User-Agent", scopedHeaders.entries.firstOrNull { it.key.equals("User-Agent", true) }?.value ?: "TurboFetch/1.0")
+                DownloadRuntimeOptions.applyHeaders(this, scopedHeaders)
                 connect()
             }
             if (connection.responseCode !in 200..299) throw IOException("Unable to fetch HLS AES-128 key (HTTP " + connection.responseCode + ")")
@@ -568,6 +575,33 @@ internal class HlsDownloadEngine {
             URI(base).resolve(value).toString()
         } catch (error: Exception) {
             throw IOException("Unable to resolve HLS URL", error)
+        }
+    }
+
+    private fun headersForTarget(
+        credentialOrigin: String,
+        targetUrl: String,
+        headers: Map<String, String>
+    ): Map<String, String> {
+        fun port(uri: URI): Int = if (uri.port >= 0) uri.port else when (uri.scheme?.lowercase()) {
+            "https" -> 443
+            "http" -> 80
+            else -> -1
+        }
+        val sameOrigin = runCatching {
+            val origin = URI(credentialOrigin)
+            val target = URI(targetUrl)
+            origin.scheme.equals(target.scheme, ignoreCase = true) &&
+                origin.host.equals(target.host, ignoreCase = true) &&
+                port(origin) == port(target)
+        }.getOrDefault(false)
+        if (sameOrigin) return headers
+        // Never forward cookies, Authorization or a full Referer URL to another origin in a
+        // manifest. Public CDNs still receive the non-sensitive browser-compatible request hints.
+        return headers.filterKeys {
+            it.equals("User-Agent", true) ||
+                it.equals("Accept", true) ||
+                it.equals("Accept-Language", true)
         }
     }
 
