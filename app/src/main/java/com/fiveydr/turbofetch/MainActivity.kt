@@ -581,6 +581,68 @@ class MainActivity : ComponentActivity() {
             webViewClient = WebViewClient()
         } }
 
+        // Load the latest scan automatically when Finder opens; Feather stores a scan on every page navigation.
+        LaunchedEffect(Unit) {
+            val browserPrefs = getSharedPreferences("turbofetch_browser_artifacts", Context.MODE_PRIVATE)
+            val savedJson = browserPrefs.getString("turbofetch_artifact_scan_json", null)
+            val savedUrl = browserPrefs.getString("turbofetch_artifact_scan_url", null)
+            if (!savedJson.isNullOrBlank() && !savedUrl.isNullOrBlank()) {
+                runCatching {
+                    val root = JSONObject(savedJson)
+                    val array = root.optJSONArray("artifacts") ?: JSONArray()
+                    val found = (0 until array.length()).mapNotNull { i ->
+                        val item = array.optJSONObject(i) ?: return@mapNotNull null
+                        MediaArtifactTools.artifact(
+                            item.optString("url"),
+                            item.optString("title").ifBlank { root.optString("title") },
+                            item.optString("mimeType")
+                        )
+                    }.distinctBy { it.url }
+                    artifactPageUrl = savedUrl
+                    scannedArtifacts = found
+                    selectedArtifactUrls = found.map { it.url }.toSet()
+                    scanStatus = if (found.isEmpty()) {
+                        "Latest browser page: no direct assets exposed. Protected/blob-based media may not be discoverable."
+                    } else {
+                        "Loaded ${found.size} automatically discovered items from your latest Feather Browser page."
+                    }
+                    val host = Uri.parse(savedUrl).host.orEmpty().lowercase(Locale.ROOT)
+                    val likelyVideoPage = host.contains("youtube.") || host.contains("youtu.be") ||
+                        host.contains("vimeo.") || host.contains("dailymotion.") ||
+                        host.contains("tiktok.") || host.contains("facebook.") ||
+                        host.contains("instagram.") || found.any {
+                            it.kind == MediaArtifactTools.Kind.VIDEO || it.kind == MediaArtifactTools.Kind.STREAM
+                        }
+                    if (likelyVideoPage) {
+                        videoSiteUrl = savedUrl
+                        inspectingVideoFormats = true
+                        videoFormatStatus = "Automatically checking available video/audio qualities…"
+                        lifecycleScope.launch {
+                            runCatching {
+                                withContext(Dispatchers.IO) {
+                                    VideoSiteExtractor.inspect(this@MainActivity, savedUrl)
+                                }
+                            }.onSuccess { result ->
+                                videoSiteTitle = result.title
+                                videoFormats = result.formats
+                                selectedVideoFormatUrl = result.formats.firstOrNull()?.url.orEmpty()
+                                videoFormatStatus = if (result.formats.isEmpty()) {
+                                    "No directly queueable audio-bearing formats found. This site may need separate-track merging or may not be supported."
+                                } else {
+                                    "Automatically found ${result.formats.size} quality/audio choices for ${result.title}."
+                                }
+                            }.onFailure {
+                                videoFormatStatus = "Automatic quality inspection unavailable for this page: ${it.message ?: "unsupported site"}"
+                            }
+                            inspectingVideoFormats = false
+                        }
+                    }
+                }.onFailure {
+                    scanStatus = "Could not read the latest browser scan. Browse to a page again and reopen Finder."
+                }
+            }
+        }
+
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SectionHeader("Advanced tools", "All tools are available here — no separate screen")
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
