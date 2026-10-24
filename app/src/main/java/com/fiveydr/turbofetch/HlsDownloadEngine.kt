@@ -210,7 +210,7 @@ internal class HlsDownloadEngine {
             val candidates = if (combinedAudioVariants.isNotEmpty()) combinedAudioVariants else variants
             val chosen = candidates.maxByOrNull { it.bandwidth } ?: variants.maxBy { it.bandwidth }
             val next = fetchManifest(chosen.url, requestHeaders, control, destination)
-            if (!next.text.trimStart('\uFEFF', ' ', '\t', '\r', '\n').startsWith("#EXTM3U")) {
+            if (!next.first.trimStart('\uFEFF', ' ', '\t', '\r', '\n').startsWith("#EXTM3U")) {
                 throw IOException("The selected HLS variant did not return a valid playlist")
             }
             return resolveMediaPlaylist(chosen.url, next, requestHeaders, control, destination, depth + 1)
