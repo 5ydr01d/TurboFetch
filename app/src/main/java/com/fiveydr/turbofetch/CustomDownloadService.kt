@@ -107,7 +107,7 @@ class CustomDownloadService : Service() {
                 }
                 try {
                     if (values.isNotEmpty()) {
-                        row.put("headersEncrypted", DownloadHeaderVault.encrypt(values))
+                        row.put("headersEncrypted", DownloadHeaderVault.encrypt(values, DownloadHeaderVault.associatedDataForDownload(row.optLong("id"), row.optString("url"))))
                     }
                     row.remove("headers")
                 } catch (_: Exception) {
@@ -161,7 +161,7 @@ class CustomDownloadService : Service() {
         val encryptedHeaders = row.optString("headersEncrypted", "")
         val requestHeaders = try {
             when {
-                encryptedHeaders.isNotBlank() -> DownloadHeaderVault.decrypt(encryptedHeaders)
+                encryptedHeaders.isNotBlank() -> DownloadHeaderVault.decrypt(encryptedHeaders, DownloadHeaderVault.associatedDataForDownload(id, url))
                 savedHeaders != null -> {
                     // Migrate queue rows created before request-header encryption was added.
                     val legacy = linkedMapOf<String, String>()
@@ -172,7 +172,7 @@ class CustomDownloadService : Service() {
                         if (key.isNotBlank() && value.isNotBlank()) legacy[key] = value
                     }
                     if (legacy.isNotEmpty()) {
-                        val protected = DownloadHeaderVault.encrypt(legacy)
+                        val protected = DownloadHeaderVault.encrypt(legacy, DownloadHeaderVault.associatedDataForDownload(id, url))
                         updateRow(id) {
                             it.put("headersEncrypted", protected)
                             it.remove("headers")
