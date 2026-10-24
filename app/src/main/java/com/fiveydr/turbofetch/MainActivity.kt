@@ -21,6 +21,8 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.widget.Toast
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -75,6 +77,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -562,9 +565,121 @@ class MainActivity : ComponentActivity() {
         var userAgent by remember { mutableStateOf(preferences.getString("tool_user_agent", "").orEmpty()) }
         var referer by remember { mutableStateOf(preferences.getString("tool_referer", "").orEmpty()) }
         var cookie by remember { mutableStateOf(preferences.getString("tool_cookie", "").orEmpty()) }
+        var artifactPageUrl by remember { mutableStateOf("") }
+        var scannedArtifacts by remember { mutableStateOf(emptyList<MediaArtifactTools.Artifact>()) }
+        var selectedArtifactUrls by remember { mutableStateOf(setOf<String>()) }
+        var scanStatus by remember { mutableStateOf("Load a page, then scan its directly exposed media and file links.") }
+        val artifactWebView = remember { WebView(this@MainActivity).apply {
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            webViewClient = WebViewClient()
+        } }
 
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SectionHeader("Advanced tools", "All tools are available here — no separate screen")
+            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Website artifact finder", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Scan a page for exposed image, video, audio, PDF, document, archive and application links. Select the files you want and send them to the TurboFetch queue.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(
+                        value = artifactPageUrl,
+                        onValueChange = { artifactPageUrl = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("Website page URL") },
+                        placeholder = { Text("https://example.com/page") }
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = {
+                            if (DownloadLinkTools.isHttpUrl(artifactPageUrl)) {
+                                scannedArtifacts = emptyList()
+                                selectedArtifactUrls = emptySet()
+                                scanStatus = "Loading page…"
+                                artifactWebView.loadUrl(artifactPageUrl.trim())
+                            } else {
+                                scanStatus = "Enter a valid HTTP or HTTPS page URL."
+                            }
+                        }, modifier = Modifier.weight(1f)) { Text("Load page") }
+                        OutlinedButton(onClick = {
+                            if (artifactWebView.url.isNullOrBlank()) {
+                                scanStatus = "Load a webpage first."
+                            } else {
+                                scanStatus = "Scanning page assets…"
+                                artifactWebView.evaluateJavascript(MediaArtifactTools.PAGE_SCAN_SCRIPT) { raw ->
+                                    runCatching {
+                                        val decoded = org.json.JSONTokener(raw ?: "null").nextValue()
+                                        val jsonText = decoded as? String ?: error("No scan data returned")
+                                        val root = JSONObject(jsonText)
+                                        val array = root.optJSONArray("artifacts") ?: JSONArray()
+                                        val found = (0 until array.length()).mapNotNull { i ->
+                                            val item = array.optJSONObject(i) ?: return@mapNotNull null
+                                            MediaArtifactTools.artifact(
+                                                item.optString("url"),
+                                                item.optString("title").ifBlank { root.optString("title") },
+                                                item.optString("mimeType")
+                                            )
+                                        }.distinctBy { it.url }
+                                        scannedArtifacts = found
+                                        selectedArtifactUrls = found.map { it.url }.toSet()
+                                        scanStatus = if (found.isEmpty()) "No direct asset links found. Some streaming sites hide media behind protected or blob-based players." else "Found ${found.size} direct links. Review and select what to queue."
+                                    }.onFailure { scanStatus = "Scan failed: ${it.message ?: "unexpected page response"}" }
+                                }
+                            }
+                        }, modifier = Modifier.weight(1f)) { Text("Scan page") }
+                    }
+                    AndroidView(
+                        factory = { artifactWebView },
+                        modifier = Modifier.fillMaxWidth().height(220.dp)
+                    )
+                    Text(scanStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (scannedArtifacts.isNotEmpty()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("${selectedArtifactUrls.size} of ${scannedArtifacts.size} selected", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+                            OutlinedButton(onClick = {
+                                selectedArtifactUrls = if (selectedArtifactUrls.size == scannedArtifacts.size) emptySet() else scannedArtifacts.map { it.url }.toSet()
+                            }) { Text(if (selectedArtifactUrls.size == scannedArtifacts.size) "Select none" else "Select all") }
+                        }
+                        scannedArtifacts.forEach { artifact ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                androidx.compose.material3.Checkbox(
+                                    checked = artifact.url in selectedArtifactUrls,
+                                    onCheckedChange = { checked ->
+                                        selectedArtifactUrls = if (checked) selectedArtifactUrls + artifact.url else selectedArtifactUrls - artifact.url
+                                    }
+                                )
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(artifact.title, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        "${artifact.kind.label} · ${artifact.qualityLabel}${if (artifact.mimeType.isNotBlank()) " · ${artifact.mimeType}" else ""}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(artifact.url, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            HorizontalDivider()
+                        }
+                        Button(
+                            onClick = {
+                                val selected = scannedArtifacts.filter { it.url in selectedArtifactUrls }
+                                if (selected.isEmpty()) {
+                                    scanStatus = "Select at least one artifact."
+                                } else {
+                                    queueToolText(selected.joinToString("\n") { it.url }, "Website artifact scan")
+                                    scanStatus = "Sent ${selected.size} selected links to the TurboFetch queue."
+                                }
+                            },
+                            enabled = selectedArtifactUrls.isNotEmpty(),
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Queue selected artifacts") }
+                    }
+                    Text("Limits: this discovers URLs exposed to the page DOM. It does not yet extract protected tube-site streams or guarantee quality options when a site hides its media URLs.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Add and batch links", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
