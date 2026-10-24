@@ -147,8 +147,21 @@ internal object MediaArtifactTools {
         });
         if (el.getAttribute('srcset')) el.getAttribute('srcset').split(',').forEach(item => add(item.trim().split(/\s+/)[0], title || document.title, 'image/*'));
       });
+      // Embedded players often assign a blob: URL to <video> while the real HLS/DASH
+      // manifest is fetched separately. Blob URLs cannot be downloaded outside this WebView,
+      // so inspect resource timing entries for the underlying manifest URL instead.
       document.querySelectorAll('video').forEach(v => {
-        if (v.currentSrc) add(v.currentSrc, v.getAttribute('title') || document.title, 'video/*');
+        const title = v.getAttribute('title') || v.getAttribute('aria-label') || document.title;
+        if (v.currentSrc && !v.currentSrc.startsWith('blob:')) add(v.currentSrc, title, 'video/*');
+        v.querySelectorAll('source[src]').forEach(source => add(source.src, title, source.type || 'video/*'));
+      });
+      const manifestPattern = /(?:\\.m3u8|\\.mpd)(?:$|[?#])|(?:manifest|playlist|master)[^/]*(?:$|[?#])/i;
+      performance.getEntriesByType('resource').forEach(entry => {
+        const resourceUrl = entry && entry.name;
+        if (!resourceUrl || !manifestPattern.test(resourceUrl)) return;
+        const isDash = /\\.mpd(?:$|[?#])/i.test(resourceUrl);
+        add(resourceUrl, (document.title || 'Embedded video') + (isDash ? ' · DASH stream' : ' · HLS stream'),
+          isDash ? 'application/dash+xml' : 'application/vnd.apple.mpegurl');
       });
       return JSON.stringify({page:location.href, title:document.title, artifacts:Array.from(out.values())});
     })()"""
