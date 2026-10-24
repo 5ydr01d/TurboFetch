@@ -84,8 +84,10 @@ internal class DashDownloadEngine {
         requestHeaders: Map<String, String> = emptyMap(),
         onProgress: (ResumableHttpEngine.Progress) -> Unit = {}
     ): ResumableHttpEngine.Result {
-        val manifest = fetchManifest(sourceUrl, sourceUrl, requestHeaders, control, destination)
-        val tracks = parseManifest(sourceUrl, manifest)
+        val manifestResponse = fetchManifest(sourceUrl, sourceUrl, requestHeaders, control, destination)
+        val manifest = manifestResponse.first
+        val finalManifestUrl = manifestResponse.second
+        val tracks = parseManifest(finalManifestUrl, manifest)
         val video = tracks.filter { it.kind == Kind.VIDEO }
             .maxWithOrNull(compareBy<Representation> { it.height }.thenBy { it.bandwidth })
         val audio = tracks.filter { it.kind == Kind.AUDIO }
@@ -104,7 +106,7 @@ internal class DashDownloadEngine {
 
         val workDir = File(destination.parentFile, destination.name + ".dash-work")
         if (!workDir.exists() && !workDir.mkdirs()) throw IOException("Cannot create DASH work directory")
-        val fingerprint = sha256(sourceUrl + "\n" + manifest)
+        val fingerprint = sha256(finalManifestUrl + "\n" + manifest)
         val fingerprintFile = File(workDir, "manifest.sha256")
         if (!fingerprintFile.isFile || runCatching { fingerprintFile.readText() }.getOrNull() != fingerprint) {
             workDir.listFiles()?.forEach { it.deleteRecursively() }
@@ -197,7 +199,7 @@ internal class DashDownloadEngine {
         headers: Map<String, String>,
         control: ResumableHttpEngine.Control,
         partialFile: File
-    ): String {
+    ): Pair<String, String> {
         checkControl(control, partialFile)
         var connection: HttpURLConnection? = null
         return try {
@@ -230,7 +232,7 @@ internal class DashDownloadEngine {
                 }
                 output.toByteArray()
             }
-            String(bytes, StandardCharsets.UTF_8)
+            String(bytes, StandardCharsets.UTF_8) to connection.url.toString()
         } finally {
             connection?.disconnect()
         }
