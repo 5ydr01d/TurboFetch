@@ -21,23 +21,23 @@ TurboFetch is an ad-free, privacy-first Android download manager built with Kotl
 - Search and filter download history; no advertising or analytics SDKs.
 - CI runs unit tests and assembles a debug APK on pushes and pull requests to `main`. Main-branch APKs use the persistent signing key configured through GitHub Actions secrets; see [the signing setup guide](docs/CI_DEBUG_SIGNING.md).
 
-**Important limitations:** resumability depends on server support and validators; some URLs will have to restart from zero. Parallel ranges are opt-in-by-capability and only used for large files on compatible servers; segmented pause/recovery and server-change edge cases still require focused validation. The custom foreground service, background recovery, and OEM battery-management behavior still need physical-device testing. Android places execution limits on long-running data-sync foreground services, so very long transfers need specific validation on Android 14/15+.
+**Important limitations:** resumability depends on server support and validators; some URLs will have to restart from zero. File-size detection depends on server support for HEAD/Content-Length. Embedded stream detection can discover exposed HLS/DASH manifests and direct media URLs, but cannot bypass DRM or guarantee access to signed URLs or browser-only cookies. Parallel ranges are opt-in-by-capability and only used for large files on compatible servers; segmented pause/recovery and server-change edge cases still require focused validation. The custom foreground service, background recovery, and OEM battery-management behavior still need physical-device testing. Android places execution limits on long-running data-sync foreground services, so very long transfers need specific validation on Android 14/15+.
 
 
 ## Build and test
 
-The GitHub Actions workflow uses JDK 17 and Gradle 8.9:
+The GitHub Actions workflow uses JDK 17 and Gradle 8.14.3:
 
 ```sh
 gradle --no-daemon testDebugUnitTest
 gradle --no-daemon assembleDebug
 ```
 
-After a successful main-branch build, the workflow uploads `TurboFetch-debug-apk` as an artifact. Pull-request builds run validation but do not publish an APK.
+After a successful build, GitHub Actions publishes separate ABI APK artifacts (`TurboFetch-arm64-v8a-*`, `TurboFetch-armeabi-v7a-*`, `TurboFetch-x86_64-*`, and `TurboFetch-x86-*`) for both pull requests and `main`. Pull-request APKs use GitHub's temporary debug signing key; main-branch APKs use the persistent signing key. Choose the arm64 artifact for most modern Android phones. Artifacts are retained for 14 days.
 
 ## Roadmap
 
-1. Verify pause/resume, process death, reboot recovery, duplicate filenames, and large files on physical devices.
+1. Verify pause/resume, process death, reboot recovery, duplicate filenames, and large files on physical devices. Duplicate in-progress transfer names are now isolated internally by queue-item ID.
 2. Expand destination controls, safer filename/MIME detection, and diagnostics with HTTP response details.
 3. Validate segmented resume, server changes during transfer, and crash recovery on physical devices.
 4. Validate browser compatibility, media capture, scheduler delivery and proxy behavior on physical Android devices.
@@ -45,4 +45,4 @@ After a successful main-branch build, the workflow uploads `TurboFetch-debug-apk
 
 ## Privacy and limitations
 
-TurboFetch stores its queue metadata and appearance preferences locally. No account, ad network, or analytics integration is configured. This remains an early development build and has not been security-audited or validated on a physical device as part of every change.
+TurboFetch stores its queue metadata and appearance preferences locally. No account, ad network, or analytics integration is configured. This remains an early development build. CI verifies compilation and unit tests, but cannot replace physical-device testing across Android versions and OEM background-process policies.
