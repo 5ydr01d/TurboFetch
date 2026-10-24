@@ -502,6 +502,8 @@ class MainActivity : ComponentActivity() {
         var speedKb by remember { mutableStateOf((preferences.getLong("speed_limit_bytes_per_second", 0L) / 1024L).toString()) }
         var partsText by remember { mutableStateOf(preferences.getInt("segments_per_download", 4).toString()) }
         var concurrencyText by remember { mutableStateOf(preferences.getInt("max_concurrent_downloads", 3).toString()) }
+        var autoRetryCountText by remember { mutableStateOf(preferences.getInt("auto_retry_count", 3).toString()) }
+        var retryDelayText by remember { mutableStateOf(preferences.getInt("auto_retry_delay_seconds", 5).toString()) }
         var proxyHost by remember { mutableStateOf(preferences.getString("proxy_host", "").orEmpty()) }
         var proxyPort by remember { mutableStateOf(preferences.getInt("proxy_port", 0).takeIf { it > 0 }?.toString().orEmpty()) }
         var wifiOnly by remember { mutableStateOf(preferences.getBoolean("wifi_only", false)) }
@@ -643,6 +645,8 @@ class MainActivity : ComponentActivity() {
                     OutlinedTextField(value = speedKb, onValueChange = { speedKb = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Global speed limit (KB/s; 0 = unlimited)") })
                     OutlinedTextField(value = partsText, onValueChange = { partsText = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Parallel parts per large file (2–16)") })
                     OutlinedTextField(value = concurrencyText, onValueChange = { concurrencyText = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Simultaneous downloads (1–30)") })
+                    OutlinedTextField(value = autoRetryCountText, onValueChange = { autoRetryCountText = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Automatic retries (0–10)") })
+                    OutlinedTextField(value = retryDelayText, onValueChange = { retryDelayText = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Initial retry delay (seconds; 1–300)") })
                     OutlinedTextField(value = proxyHost, onValueChange = { proxyHost = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("HTTP proxy host (blank = direct)") })
                     OutlinedTextField(value = proxyPort, onValueChange = { proxyPort = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("HTTP proxy port (blank/0 = direct)") })
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -658,8 +662,11 @@ class MainActivity : ComponentActivity() {
                             val speed = (speedKb.toLongOrNull() ?: 0L).coerceAtLeast(0L)
                             val parts = (partsText.toIntOrNull() ?: 4).coerceIn(2, 16)
                             val concurrent = (concurrencyText.toIntOrNull() ?: 3).coerceIn(1, 30)
+                            val autoRetries = (autoRetryCountText.toIntOrNull() ?: 3).coerceIn(0, 10)
+                            val retryDelay = (retryDelayText.toIntOrNull() ?: 5).coerceIn(1, 300)
                             preferences.edit().putLong("speed_limit_bytes_per_second", speed * 1024L)
                                 .putInt("segments_per_download", parts).putInt("max_concurrent_downloads", concurrent)
+                                .putInt("auto_retry_count", autoRetries).putInt("auto_retry_delay_seconds", retryDelay)
                                 .putString("proxy_host", host).putInt("proxy_port", if (host.isBlank()) 0 else port)
                                 .putBoolean("wifi_only", wifiOnly).apply()
                             DownloadRuntimeOptions.refresh(this@MainActivity)
@@ -668,7 +675,7 @@ class MainActivity : ComponentActivity() {
                             Toast.makeText(this@MainActivity, "Transfer settings saved", Toast.LENGTH_SHORT).show()
                         }
                     }, modifier = Modifier.fillMaxWidth()) { Text("Save transfer settings") }
-                    Text("Parallel parts require server byte-range support and a stable validator. Proxy and Wi-Fi-only options affect TurboFetch downloads.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Automatic retries use exponential backoff for transient timeouts, connection failures, HTTP 408/425/429 and 5xx responses. Certificate failures and other permanent errors are not retried. Parallel parts require server byte-range support and a stable validator.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
