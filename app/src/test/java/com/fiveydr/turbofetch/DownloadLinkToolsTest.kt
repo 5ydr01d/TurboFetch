@@ -27,8 +27,8 @@ class DownloadLinkToolsTest {
         val first = DownloadLinkTools.transferFileName(101L, "../movie?.mp4")
         val second = DownloadLinkTools.transferFileName(102L, "../movie?.mp4")
 
-        assertEquals("101-.._movie_.mp4", first)
-        assertEquals("102-.._movie_.mp4", second)
+        assertEquals("101-_movie_.mp4", first)
+        assertEquals("102-_movie_.mp4", second)
         assertFalse(first == second)
         assertTrue(DownloadLinkTools.transferFileName(103L, "   ").endsWith("download.bin"))
     }
