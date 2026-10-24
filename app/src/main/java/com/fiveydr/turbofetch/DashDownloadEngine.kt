@@ -156,9 +156,10 @@ internal class DashDownloadEngine {
             preserveWork = true
             throw error
         } catch (error: ResumableHttpEngine.CancelledException) {
-            File(destination.parentFile, destination.nameWithoutExtension + ".dash-output.mp4").delete()
-            File(destination.parentFile, destination.nameWithoutExtension + ".dash-output.m4a").delete()
-            File(destination.parentFile, destination.nameWithoutExtension + ".dash-output.webm").delete()
+            val outputPrefix = destination.nameWithoutExtension + ".dash-output."
+            destination.parentFile?.listFiles()
+                ?.filter { it.name.startsWith(outputPrefix) }
+                ?.forEach { it.delete() }
             throw error
         } finally {
             if (!preserveWork && control.isCancelled()) workDir.deleteRecursively()
@@ -472,6 +473,8 @@ internal class DashDownloadEngine {
         if (pathExtension in setOf("mp4", "m4a", "webm", "mkv", "ts", "aac")) return pathExtension
         return when {
             mime.contains("webm") || codecs.contains("vp9", true) || codecs.contains("vp09", true) -> "webm"
+            mime.contains("mp2t") || mime.contains("mpegts") -> "ts"
+            mime.contains("aac") -> "aac"
             kind == Kind.AUDIO -> "m4a"
             else -> "mp4"
         }
