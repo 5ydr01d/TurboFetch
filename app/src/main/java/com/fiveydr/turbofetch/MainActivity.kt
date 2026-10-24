@@ -203,7 +203,13 @@ class MainActivity : ComponentActivity() {
             ?: return
         // Consume the handoff marker so activity recreation cannot enqueue the same file twice.
         setIntent(Intent(sourceIntent).apply {
+            // Don't retain one-time credentials in the Activity's remembered launch Intent.
             removeExtra("com.fiveydr.turbofetch.extra.DOWNLOAD_URL")
+            removeExtra("com.fiveydr.turbofetch.extra.USER_AGENT")
+            removeExtra("com.fiveydr.turbofetch.extra.REFERER")
+            removeExtra("com.fiveydr.turbofetch.extra.COOKIE")
+            removeExtra("com.fiveydr.turbofetch.extra.CONTENT_DISPOSITION")
+            removeExtra("com.fiveydr.turbofetch.extra.MIME_TYPE")
         })
 
         // Browser credentials are needed for this transfer only. Never copy cookies into long-lived
