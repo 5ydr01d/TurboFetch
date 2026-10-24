@@ -49,6 +49,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -175,6 +178,7 @@ class MainActivity : ComponentActivity() {
         onTextScaleChange: (Float) -> Unit
     ) {
         var tab by remember { mutableStateOf(AppTab.Home) }
+        var addDialogOpen by remember { mutableStateOf(false) }
         var urlInput by remember { mutableStateOf(sharedUrlOnLaunch.orEmpty()) }
         var search by remember { mutableStateOf("") }
         var filter by remember { mutableStateOf(DownloadFilter.All) }
@@ -230,6 +234,11 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                 )
+            },
+            floatingActionButton = {
+                FloatingActionButton(onClick = { addDialogOpen = true }) {
+                    Text("+", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                }
             },
             bottomBar = {
                 NavigationBar {
