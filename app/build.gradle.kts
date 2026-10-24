@@ -18,8 +18,8 @@ android {
         applicationId = "com.fiveydr.turbofetch"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.4.2"
+        versionCode = 9
+        versionName = "0.4.3"
     }
 
     // Build one APK per ABI so each phone installs only its own native FFmpeg/Python
@@ -293,21 +293,31 @@ val patchFeatherPopupBlocker = tasks.register("patchFeatherPopupBlocker") {
         if (!webViewSource.contains("turbofetch_artifact_scan_json")) {
             check(webViewSource.contains(pageFinishedAnchor)) { "Could not find Feather onPageFinished insertion point for automatic artifact scan" }
             val autoScan = listOf(
-                "                                // TurboFetch: automatically collect exposed assets after every browser navigation.",
+                "                                // TurboFetch: keep rescanning while embedded players initialize and request their manifests.",
                 "                                if (url != null && (url.startsWith(\"https://\") || url.startsWith(\"http://\"))) {",
                 "                                    val scanScript = com.fiveydr.turbofetch.MediaArtifactTools.PAGE_SCAN_SCRIPT",
-                "                                    view?.evaluateJavascript(scanScript) { rawResult ->",
-                "                                        runCatching {",
-                "                                            val decoded = org.json.JSONTokener(rawResult ?: \"null\").nextValue() as? String ?: return@runCatching",
-                "                                            val parsed = org.json.JSONObject(decoded)",
-                "                                            val prefs = view?.context?.getSharedPreferences(\"turbofetch_browser_artifacts\", android.content.Context.MODE_PRIVATE) ?: return@runCatching",
-                "                                            prefs.edit()",
-                "                                                .putString(\"turbofetch_artifact_scan_url\", parsed.optString(\"page\", url))",
-                "                                                .putString(\"turbofetch_artifact_scan_json\", decoded)",
-                "                                                .putLong(\"turbofetch_artifact_scan_time\", System.currentTimeMillis())",
-                "                                                .apply()",
+                "                                    val scanHandler = android.os.Handler(android.os.Looper.getMainLooper())",
+                "                                    val scanCount = intArrayOf(0)",
+                "                                    val scanRunnable = object : Runnable {",
+                "                                        override fun run() {",
+                "                                            if (view?.url != url || scanCount[0] >= 15) return",
+                "                                            view?.evaluateJavascript(scanScript) { rawResult ->",
+                "                                                runCatching {",
+                "                                                    val decoded = org.json.JSONTokener(rawResult ?: \"null\").nextValue() as? String ?: return@runCatching",
+                "                                                    val parsed = org.json.JSONObject(decoded)",
+                "                                                    val prefs = view?.context?.getSharedPreferences(\"turbofetch_browser_artifacts\", android.content.Context.MODE_PRIVATE) ?: return@runCatching",
+                "                                                    prefs.edit()",
+                "                                                        .putString(\"turbofetch_artifact_scan_url\", parsed.optString(\"page\", url))",
+                "                                                        .putString(\"turbofetch_artifact_scan_json\", decoded)",
+                "                                                        .putLong(\"turbofetch_artifact_scan_time\", System.currentTimeMillis())",
+                "                                                        .apply()",
+                "                                                }",
+                "                                            }",
+                "                                            scanCount[0]++",
+                "                                            if (scanCount[0] < 15) scanHandler.postDelayed(this, 2000L)",
                 "                                        }",
                 "                                    }",
+                "                                    scanRunnable.run()",
                 "                                }"
             ).joinToString("\n")
             webViewSource = webViewSource.replace(pageFinishedAnchor, pageFinishedAnchor + "\n" + autoScan)
