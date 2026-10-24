@@ -124,7 +124,7 @@ class DashDownloadEngineTest {
                     """<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" mediaPresentationDuration="PT4S">""" +
                     """<Period><AdaptationSet contentType="video" mimeType="video/mp4">""" +
                     """<BaseURL>vod/</BaseURL><Representation id="vid" bandwidth="100000" width="320" height="180">""" +
-                    """<SegmentTemplate timescale="1" duration="2" initialization="init.mp4" media="seg-\$Number\$.m4s"/>""" +
+                    """<SegmentTemplate timescale="1" duration="2" initialization="init.mp4" media="seg-""" + "\$" + "Number" + "\$" + """.m4s"/>""" +
                     """</Representation></AdaptationSet></Period></MPD>"""
                 ).toByteArray(StandardCharsets.UTF_8)
                 "/vod/init.mp4" -> initialization
