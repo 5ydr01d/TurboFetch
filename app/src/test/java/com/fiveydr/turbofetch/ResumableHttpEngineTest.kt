@@ -142,7 +142,7 @@ class ResumableHttpEngineTest {
         partial.writeBytes(payload.copyOfRange(0, 100_000))
         val metadata = Properties().apply {
             setProperty("url", url())
-            setProperty("etag", "\"test-etag"\")
+            setProperty("etag", "\"test-etag\"")
         }
         File(root, "sample.bin.part.properties").outputStream().use { metadata.store(it, null) }
 
@@ -181,7 +181,7 @@ class ResumableHttpEngineTest {
         partial.writeBytes(payload.copyOfRange(0, 100_000))
         val metadata = Properties().apply {
             setProperty("url", url())
-            setProperty("etag", ""\"old-etag\""")
+            setProperty("etag", "\"test-etag\"")
         }
         metadataFile.outputStream().use { metadata.store(it, null) }
         changeResumeEtag.set(true)
@@ -202,7 +202,7 @@ class ResumableHttpEngineTest {
         partial.writeBytes(payload.copyOfRange(0, 100_000))
         val metadata = Properties().apply {
             setProperty("url", url())
-            setProperty("etag", "\\"test-etag\\"")
+            setProperty("etag", "\"test-etag\"")
         }
         metadataFile.outputStream().use { metadata.store(it, null) }
         rejectResumeRange.set(true)
