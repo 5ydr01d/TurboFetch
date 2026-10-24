@@ -260,10 +260,14 @@ val patchFeatherPopupBlocker = tasks.register("patchFeatherPopupBlocker") {
 
         // Wire the same dialog callback into the bottom-toolbar address pill.
         val bottomCallbackAnchor = "                            onOpenReaderMode = { viewModel.openReaderMode() }"
-        if (!browserScreenSource.contains("onOpenUniversalArtifactFinder =")) {
-            check(browserScreenSource.contains(bottomCallbackAnchor)) { "Could not find Feather bottom-bar callback insertion point" }
-            browserScreenSource = browserScreenSource.replace(
-                bottomCallbackAnchor,
+        val bottomCommandStart = browserScreenSource.indexOf("UnifiedBottomCommandBar(")
+        check(bottomCommandStart >= 0) { "Could not find Feather UnifiedBottomCommandBar call" }
+        val bottomCallbackPosition = browserScreenSource.indexOf(bottomCallbackAnchor, bottomCommandStart)
+        if (bottomCallbackPosition >= 0 &&
+            !browserScreenSource.substring(bottomCommandStart).substringBefore("BrowserBottomBar(").contains("onOpenUniversalArtifactFinder =")) {
+            browserScreenSource = browserScreenSource.replaceRange(
+                bottomCallbackPosition,
+                bottomCallbackPosition + bottomCallbackAnchor.length,
                 bottomCallbackAnchor + ",\n                            onOpenUniversalArtifactFinder = { dismissAddressBar(); showUniversalArtifactFinder = true }"
             )
         }
