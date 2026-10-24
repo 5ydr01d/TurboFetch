@@ -18,8 +18,8 @@ android {
         applicationId = "com.fiveydr.turbofetch"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.4.0"
+        versionCode = 7
+        versionName = "0.4.1"
     }
 
     // Build one APK per ABI so each phone installs only its own native FFmpeg/Python
@@ -126,7 +126,8 @@ val patchFeatherPopupBlocker = tasks.register("patchFeatherPopupBlocker") {
         }
         settingsFile.writeText(settingsSource)
 
-        // Put the Universal Artifact Downloader entry point directly in Feather's address bar.
+        // Put the Universal Artifact Downloader button inside the rounded URL field, beside reload.
+        // This keeps it visible on narrow phones instead of adding another item to the clipped outer toolbar.
         val addressBarFile = layout.buildDirectory.file("generated/feather/java/com/example/ui/components/AddressBar.kt").get().asFile
         check(addressBarFile.exists()) { "Feather AddressBar.kt was not copied" }
         var addressBarSource = addressBarFile.readText()
@@ -143,28 +144,30 @@ val patchFeatherPopupBlocker = tasks.register("patchFeatherPopupBlocker") {
 )"""
             )
         }
-        val addressActionAnchor = "                    // Quick Reload or Bookmark on Top Bar"
-        if (!addressBarSource.contains("Universal Artifact Downloader")) {
-            check(addressBarSource.contains(addressActionAnchor)) { "Could not find Feather address-bar action insertion point" }
-            val finderButton = listOf(
-                "                    // Universal Artifact Downloader stays inside Feather Browser.",
-                "                    if (hasValidUrl && onOpenUniversalArtifactFinder != null) {",
-                "                        IconButton(",
-                "                            onClick = onOpenUniversalArtifactFinder,",
-                "                            modifier = Modifier.size(36.dp).focusProperties { canFocus = false }.testTag(\"universal_artifact_finder_button\")",
-                "                        ) {",
-                "                            Icon(",
-                "                                imageVector = Icons.Default.Download,",
-                "                                contentDescription = \"Universal Artifact Downloader\",",
-                "                                tint = MaterialTheme.colorScheme.primary,",
-                "                                modifier = Modifier.size(20.dp)",
-                "                            )",
-                "                        }",
-                "                    }",
-                ""
-            ).joinToString("\n")
-            addressBarSource = addressBarSource.replace(addressActionAnchor, finderButton + addressActionAnchor)
+        val finderInsertionAnchor = """                        val hasValidUrl = !activeTab?.url.isNullOrBlank() && activeTab?.url != "about:blank"
+                        if (isEditing) {"""
+        if (!addressBarSource.contains("universal_artifact_finder_button")) {
+            check(addressBarSource.contains(finderInsertionAnchor)) { "Could not find Feather URL-field action insertion point" }
+            val finderButton = """                        if (!isEditing && hasValidUrl && onOpenUniversalArtifactFinder != null) {
+                            IconButton(
+                                onClick = onOpenUniversalArtifactFinder,
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .focusProperties { canFocus = false }
+                                    .testTag("universal_artifact_finder_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Download,
+                                    contentDescription = "Universal Artifact Downloader",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        if (isEditing) {"""
+            addressBarSource = addressBarSource.replace(finderInsertionAnchor, finderInsertionAnchor.replace("                        if (isEditing) {", finderButton))
         }
+        check(addressBarSource.contains("universal_artifact_finder_button")) { "Universal Artifact Downloader button was not injected into Feather AddressBar.kt" }
         addressBarFile.writeText(addressBarSource)
 
         val browserScreenFile = layout.buildDirectory.file("generated/feather/java/com/example/ui/BrowserScreen.kt").get().asFile
