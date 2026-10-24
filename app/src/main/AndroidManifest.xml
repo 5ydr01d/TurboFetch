@@ -13,7 +13,7 @@
         android:hardwareAccelerated="true"
         android:label="TurboFetch"
         android:supportsRtl="true"
-        android:theme="@style/Theme.MyApplication"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="true">
         <activity
             android:name="com.fiveydr.turbofetch.MainActivity"
