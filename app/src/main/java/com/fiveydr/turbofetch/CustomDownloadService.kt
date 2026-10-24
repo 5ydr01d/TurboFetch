@@ -45,6 +45,7 @@ class CustomDownloadService : Service() {
         DownloadRuntimeOptions.refresh(this)
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, notification("Preparing download queue"))
+        migrateLegacyRequestHeaders()
         recoverInterruptedRows()
     }
 
@@ -72,6 +73,55 @@ class CustomDownloadService : Service() {
         controls.values.forEach { it.pause() }
         serviceScope.cancel()
         super.onDestroy()
+    }
+
+    /**
+     * Migrate older queue rows that stored request headers as readable JSON. Completed or
+     * cancelled rows no longer need credentials, so those headers are discarded instead.
+     */
+    private fun migrateLegacyRequestHeaders() {
+        synchronized(lock) {
+            val rows = readRows()
+            var changed = false
+            for (index in 0 until rows.length()) {
+                val row = rows.optJSONObject(index) ?: continue
+                val legacy = row.optJSONObject("headers") ?: continue
+                val phase = row.optString("phase")
+                if (phase == PHASE_COMPLETE || phase == PHASE_CANCELLED) {
+                    row.remove("headers")
+                    row.remove("headersEncrypted")
+                    changed = true
+                    continue
+                }
+                if (row.optString("headersEncrypted").isNotBlank()) {
+                    row.remove("headers")
+                    changed = true
+                    continue
+                }
+                val values = linkedMapOf<String, String>()
+                val keys = legacy.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val value = legacy.optString(key)
+                    if (key.isNotBlank() && value.isNotBlank()) values[key] = value
+                }
+                try {
+                    if (values.isNotEmpty()) {
+                        row.put("headersEncrypted", DownloadHeaderVault.encrypt(values, DownloadHeaderVault.associatedDataForDownload(row.optLong("id"), row.optString("url"))))
+                    }
+                    row.remove("headers")
+                } catch (_: Exception) {
+                    // Fail closed if legacy credentials cannot be protected on this device.
+                    row.remove("headers")
+                    row.remove("headersEncrypted")
+                    row.put("phase", PHASE_FAILED)
+                        .put("failureType", "Credential storage")
+                        .put("reason", "Could not securely migrate saved request headers; re-add this download.")
+                }
+                changed = true
+            }
+            if (changed) writeRows(rows)
+        }
     }
 
     private fun scheduleQueue() {
@@ -108,13 +158,43 @@ class CustomDownloadService : Service() {
         val url = row.optString("url")
         val title = row.optString("title", "download.bin")
         val savedHeaders = row.optJSONObject("headers")
-        val requestHeaders = linkedMapOf<String, String>()
-        if (savedHeaders != null) {
-            val keys = savedHeaders.keys()
-            while (keys.hasNext()) {
-                val key = keys.next()
-                requestHeaders[key] = savedHeaders.optString(key)
+        val encryptedHeaders = row.optString("headersEncrypted", "")
+        val requestHeaders = try {
+            when {
+                encryptedHeaders.isNotBlank() -> DownloadHeaderVault.decrypt(encryptedHeaders, DownloadHeaderVault.associatedDataForDownload(id, url))
+                savedHeaders != null -> {
+                    // Migrate queue rows created before request-header encryption was added.
+                    val legacy = linkedMapOf<String, String>()
+                    val keys = savedHeaders.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        val value = savedHeaders.optString(key)
+                        if (key.isNotBlank() && value.isNotBlank()) legacy[key] = value
+                    }
+                    if (legacy.isNotEmpty()) {
+                        val protected = DownloadHeaderVault.encrypt(legacy, DownloadHeaderVault.associatedDataForDownload(id, url))
+                        updateRow(id) {
+                            it.put("headersEncrypted", protected)
+                            it.remove("headers")
+                        }
+                    } else {
+                        updateRow(id) { it.remove("headers") }
+                    }
+                    legacy
+                }
+                else -> emptyMap()
             }
+        } catch (error: Exception) {
+            // If the Android Keystore key was removed (for example after a device restore),
+            // never retry with missing credentials or silently save them in plaintext.
+            updateRow(id) {
+                it.put("phase", PHASE_FAILED)
+                    .put("failureType", "Credential storage")
+                    .put("reason", "Saved request credentials are unavailable on this installation. Re-add this download.")
+                it.remove("headers")
+                it.remove("headersEncrypted")
+            }
+            return
         }
         val directory = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: filesDir, "transfers")
         if (!directory.exists() && !directory.mkdirs()) {
@@ -159,6 +239,7 @@ class CustomDownloadService : Service() {
                     // Request headers are no longer needed once the transfer is complete.
                     // This drops cookies/authorization from persisted queue metadata.
                     it.remove("headers")
+                    it.remove("headersEncrypted")
                 }
                 result.file.delete()
             } catch (_: ResumableHttpEngine.PausedException) {

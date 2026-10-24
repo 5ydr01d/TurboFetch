@@ -117,6 +117,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Migrate older manually configured header overrides out of plaintext preferences.
+        loadSavedToolHeaders()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         downloadManager = getSystemService(DOWNLOAD_SERVICE) as DownloadManager
         toolImportLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -557,9 +559,10 @@ class MainActivity : ComponentActivity() {
         var proxyHost by remember { mutableStateOf(preferences.getString("proxy_host", "").orEmpty()) }
         var proxyPort by remember { mutableStateOf(preferences.getInt("proxy_port", 0).takeIf { it > 0 }?.toString().orEmpty()) }
         var wifiOnly by remember { mutableStateOf(preferences.getBoolean("wifi_only", false)) }
-        var userAgent by remember { mutableStateOf(preferences.getString("tool_user_agent", "").orEmpty()) }
-        var referer by remember { mutableStateOf(preferences.getString("tool_referer", "").orEmpty()) }
-        var cookie by remember { mutableStateOf(preferences.getString("tool_cookie", "").orEmpty()) }
+        val savedToolHeaders = remember { loadSavedToolHeaders() }
+        var userAgent by remember { mutableStateOf(savedToolHeaders["User-Agent"].orEmpty()) }
+        var referer by remember { mutableStateOf(savedToolHeaders["Referer"].orEmpty()) }
+        var cookie by remember { mutableStateOf(savedToolHeaders["Cookie"].orEmpty()) }
         var artifactPageUrl by remember { mutableStateOf("") }
         var scannedArtifacts by remember { mutableStateOf(emptyList<MediaArtifactTools.Artifact>()) }
         var selectedArtifactUrls by remember { mutableStateOf(setOf<String>()) }
@@ -900,14 +903,25 @@ class MainActivity : ComponentActivity() {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Request headers", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("Optional headers apply to new downloads queued from these tools. Cookies are stored locally; avoid shared devices.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Optional headers apply to new downloads from these tools. Saved values are encrypted with Android Keystore on this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedTextField(value = userAgent, onValueChange = { userAgent = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("User-Agent (optional)") })
                     OutlinedTextField(value = referer, onValueChange = { referer = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Referer (optional)") })
                     OutlinedTextField(value = cookie, onValueChange = { cookie = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Cookie (optional)") })
                     Text("These fields apply only to downloads queued from this section.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(onClick = {
-                        preferences.edit().putString("tool_user_agent", userAgent).putString("tool_referer", referer).putString("tool_cookie", cookie).apply()
-                        Toast.makeText(this@MainActivity, "Request headers saved for this session", Toast.LENGTH_SHORT).show()
+                        runCatching {
+                            saveToolHeaders(
+                                mapOf(
+                                    "User-Agent" to userAgent,
+                                    "Referer" to referer,
+                                    "Cookie" to cookie
+                                )
+                            )
+                        }.onSuccess {
+                            Toast.makeText(this@MainActivity, "Request headers saved securely", Toast.LENGTH_SHORT).show()
+                        }.onFailure {
+                            Toast.makeText(this@MainActivity, "Could not encrypt request headers; previous settings were kept.", Toast.LENGTH_LONG).show()
+                        }
                     }, modifier = Modifier.fillMaxWidth()) { Text("Save request headers") }
                 }
             }
@@ -918,6 +932,62 @@ class MainActivity : ComponentActivity() {
                     Text("Checksums help confirm a file has not changed; they do not prove that a file is safe.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+        }
+    }
+
+    /**
+     * Loads encrypted Advanced Tools header overrides, migrating older plaintext preferences
+     * the first time this version is launched. Raw legacy keys are removed after migration.
+     */
+    private fun loadSavedToolHeaders(): Map<String, String> {
+        val encrypted = preferences.getString("tool_headers_encrypted", "").orEmpty()
+        if (encrypted.isNotBlank()) {
+            return runCatching { DownloadHeaderVault.decryptToolSettings(encrypted) }
+                .getOrElse {
+                    Toast.makeText(this, "Saved request headers could not be decrypted. Re-enter them in Settings.", Toast.LENGTH_LONG).show()
+                    emptyMap()
+                }
+        }
+
+        val legacy = linkedMapOf<String, String>()
+        preferences.getString("tool_user_agent", "").orEmpty().takeIf { it.isNotBlank() }?.let { legacy["User-Agent"] = it }
+        preferences.getString("tool_referer", "").orEmpty().takeIf { it.isNotBlank() }?.let { legacy["Referer"] = it }
+        preferences.getString("tool_cookie", "").orEmpty().takeIf { it.isNotBlank() }?.let { legacy["Cookie"] = it }
+        if (legacy.isEmpty()) return emptyMap()
+
+        return try {
+            val protected = DownloadHeaderVault.encryptToolSettings(legacy)
+            preferences.edit()
+                .putString("tool_headers_encrypted", protected)
+                .remove("tool_user_agent")
+                .remove("tool_referer")
+                .remove("tool_cookie")
+                .apply()
+            legacy
+        } catch (_: Exception) {
+            // Never keep legacy credential strings in plaintext when migration cannot be secured.
+            preferences.edit()
+                .remove("tool_user_agent")
+                .remove("tool_referer")
+                .remove("tool_cookie")
+                .apply()
+            Toast.makeText(this, "Could not securely migrate saved headers. Please enter them again.", Toast.LENGTH_LONG).show()
+            emptyMap()
+        }
+    }
+
+    private fun saveToolHeaders(headers: Map<String, String>) {
+        val cleaned = headers.filter { (name, value) -> name.isNotBlank() && value.isNotBlank() }
+        val editor = preferences.edit()
+            .remove("tool_user_agent")
+            .remove("tool_referer")
+            .remove("tool_cookie")
+        if (cleaned.isEmpty()) {
+            editor.remove("tool_headers_encrypted").apply()
+        } else {
+            // Encrypt before committing; on failure, leave the previous encrypted value intact.
+            val protected = DownloadHeaderVault.encryptToolSettings(cleaned)
+            editor.putString("tool_headers_encrypted", protected).apply()
         }
     }
 
@@ -935,9 +1005,10 @@ class MainActivity : ComponentActivity() {
         for (i in 0 until currentRows.length()) used.add(currentRows.optJSONObject(i)?.optString("title").orEmpty().lowercase(Locale.ROOT))
         val headers = linkedMapOf<String, String>()
         if (useSavedHeaders) {
-            preferences.getString("tool_user_agent", "").orEmpty().takeIf { it.isNotBlank() }?.let { headers["User-Agent"] = it.trim() }
-            preferences.getString("tool_referer", "").orEmpty().takeIf { it.isNotBlank() }?.let { headers["Referer"] = it.trim() }
-            preferences.getString("tool_cookie", "").orEmpty().takeIf { it.isNotBlank() }?.let { headers["Cookie"] = it.trim() }
+            val saved = loadSavedToolHeaders()
+            saved.forEach { (name, value) ->
+                if (name.isNotBlank() && value.isNotBlank()) headers[name] = value.trim()
+            }
         }
         extraHeaders.forEach { (key, value) -> if (key.isNotBlank() && value.isNotBlank()) headers[key] = value }
         urls.forEach { url ->
@@ -951,7 +1022,16 @@ class MainActivity : ComponentActivity() {
                 title = "${stem} ($n)$ext"
             }
             used.add(title.lowercase(Locale.ROOT))
-            DownloadQueueScheduler.add(this, url, title, description, headers)
+            try {
+                DownloadQueueScheduler.add(this, url, title, description, headers)
+            } catch (_: Exception) {
+                Toast.makeText(
+                    this,
+                    "Could not securely protect request headers; download was not queued.",
+                    Toast.LENGTH_LONG
+                ).show()
+                return
+            }
             preferences.edit().putString("last_tool_url", url).apply()
         }
         CustomDownloadService.start(this)

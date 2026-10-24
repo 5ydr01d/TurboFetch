@@ -7,7 +7,7 @@ TurboFetch is an ad-free, privacy-first Android download manager built with Kotl
 - Redesigned Material 3 interface with Home, Downloads, Files, and Settings destinations.
 - Light/dark themes and adjustable in-app text size.
 - Built-in multi-tab WebView browser with ad/tracker filtering, private tabs, bookmarks, local history, exposed media/file-link capture, and a page-link grabber.
-- Batch queueing from pasted text, clipboard or TXT files; URL-list export; optional request headers for compatible hosts.
+- Batch queueing from pasted text, clipboard or TXT files; URL-list export; optional request headers for compatible hosts, encrypted at rest with Android Keystore.
 - Download scheduler with reboot restoration, Wi-Fi-only gating, global speed cap, HTTP proxy, configurable parallel-part count, and 1–30 concurrent downloads.
 - MD5 and SHA-256 file checksum tool, pause/resume all, retry failed jobs, and clear-completed-history without deleting saved files.
 - Persistent FIFO queue with configurable concurrency from 1–5.
@@ -45,4 +45,4 @@ After a successful build, GitHub Actions publishes separate ABI APK artifacts (`
 
 ## Privacy and limitations
 
-TurboFetch stores its queue metadata and appearance preferences locally. No account, ad network, or analytics integration is configured. This remains an early development build. CI verifies compilation and unit tests, but cannot replace physical-device testing across Android versions and OEM background-process policies.
+TurboFetch stores queue metadata and appearance preferences locally. Per-download request headers and the optional Advanced Tools User-Agent, Referer, and Cookie overrides are encrypted at rest with AES-GCM using a non-exportable Android Keystore key. Encrypted queue headers are authenticated against each download ID and source URL. Older plaintext header preferences and queue rows are migrated when possible; if the device Keystore cannot decrypt saved credentials (for example after restoring app data to another device), affected downloads must be re-added and global headers re-entered. No account, ad network, or analytics integration is configured. This remains an early development build. CI verifies compilation and unit tests, but cannot replace physical-device testing across Android versions and OEM background-process policies.
