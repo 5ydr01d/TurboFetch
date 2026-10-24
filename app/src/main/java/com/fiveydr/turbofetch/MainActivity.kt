@@ -259,26 +259,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 when (tab) {
                     AppTab.Home -> {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = urlInput,
-                                onValueChange = { urlInput = it },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true,
-                                label = { Text("Download link") },
-                                placeholder = { Text("Paste URL") },
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            Button(
-                                onClick = { enqueueDownload(urlInput, rows) { urlInput = ""; rows = loadRows() } },
-                                enabled = urlInput.isNotBlank(),
-                                shape = RoundedCornerShape(12.dp)
-                            ) { Text("↓") }
-                        }
+                        Text("Tap + to add a download, or share a link from another app.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         OutlinedTextField(
                             value = search,
                             onValueChange = { search = it },
