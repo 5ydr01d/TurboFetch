@@ -17,8 +17,8 @@ android {
         applicationId = "com.fiveydr.turbofetch"
         minSdk = 26
         targetSdk = 35
-        versionCode = 12
-        versionName = "0.4.6"
+        versionCode = 13
+        versionName = "0.4.7"
     }
 
     // Build one APK per ABI so each phone installs only its own native FFmpeg/Python
