@@ -153,8 +153,10 @@ internal object MediaArtifactTools {
       // so inspect resource timing entries for the underlying manifest URL instead.
       document.querySelectorAll('video').forEach(v => {
         const title = v.getAttribute('title') || v.getAttribute('aria-label') || document.title;
-        if (v.currentSrc && !v.currentSrc.startsWith('blob:')) add(v.currentSrc, title, 'video/*');
-        v.querySelectorAll('source[src]').forEach(source => add(source.src, title, source.type || 'video/*'));
+        const streamMime = url => /\\.mpd(?:$|[?#])/i.test(url) ? 'application/dash+xml' :
+          /\\.m3u8(?:$|[?#])/i.test(url) ? 'application/vnd.apple.mpegurl' : 'video/*';
+        if (v.currentSrc && !v.currentSrc.startsWith('blob:')) add(v.currentSrc, title, streamMime(v.currentSrc));
+        v.querySelectorAll('source[src]').forEach(source => add(source.src, title, streamMime(source.src) === 'video/*' ? (source.type || 'video/*') : streamMime(source.src)));
       });
       const manifestPattern = /(?:\.m3u8|\.mpd)(?:$|[?#])|(?:manifest|playlist|master)[^/]*(?:$|[?#])/i;
       performance.getEntriesByType('resource').forEach(entry => {
