@@ -244,8 +244,8 @@ internal class DashDownloadEngine {
         runCatching { factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
         runCatching { factory.setFeature("http://xml.org/sax/features/external-general-entities", false) }
         runCatching { factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
-        runCatching { factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, "") }
-        runCatching { factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA, "") }
+        runCatching { factory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalDTD", "") }
+        runCatching { factory.setAttribute("http://javax.xml.XMLConstants/property/accessExternalSchema", "") }
 
         val root = try {
             factory.newDocumentBuilder().parse(InputSource(StringReader(xml))).documentElement
