@@ -303,15 +303,14 @@ internal class DashDownloadEngine {
         val timescale = (template.timescale ?: 1L).coerceAtLeast(1L)
         val startNumber = template.startNumber ?: 1L
         val timeline = template.timeline
-        val times = if (timeline != null) {
-            expandTimeline(timeline, timescale, durationSeconds)
-        } else {
-            val duration = template.duration ?: throw IOException("DASH SegmentTemplate has no duration or SegmentTimeline")
-            if (duration <= 0L) throw IOException("DASH SegmentTemplate duration must be positive")
-            val presentationDuration = durationSeconds
-                ?: if (!hasNumberOrTimePlaceholder(media)) null else throw IOException("DASH segment count cannot be inferred without a finite presentation duration")
-            if (presentationDuration == null) listOf(0L)
-            else {
+        val times = when {
+            timeline != null -> expandTimeline(timeline, timescale, durationSeconds)
+            !hasNumberOrTimePlaceholder(media) -> listOf(0L)
+            else -> {
+                val duration = template.duration ?: throw IOException("DASH SegmentTemplate has no duration or SegmentTimeline")
+                if (duration <= 0L) throw IOException("DASH SegmentTemplate duration must be positive")
+                val presentationDuration = durationSeconds
+                    ?: throw IOException("DASH segment count cannot be inferred without a finite presentation duration")
                 val count = kotlin.math.ceil((presentationDuration * timescale) / duration.toDouble()).toInt()
                 if (count !in 1..MAX_SEGMENTS) throw IOException("DASH template expands to too many segments")
                 List(count) { it.toLong() * duration }
@@ -641,35 +640,6 @@ internal class DashDownloadEngine {
         return if (value.isBlank()) inherited else resolveUrl(inherited, value)
     }
 
-    private fun classify(mimeType: String, contentType: String, codecs: String, width: Int, height: Int): Kind? {
-        val mime = mimeType.lowercase()
-        val type = contentType.lowercase()
-        val codec = codecs.lowercase()
-        if (type == "video" || mime.startsWith("video/") || width > 0 || height > 0 ||
-            listOf("avc1", "avc3", "hev1", "hvc1", "vp09", "vp9", "av01").any { codec.contains(it) }
-        ) return Kind.VIDEO
-        if (type == "audio" || mime.startsWith("audio/") ||
-            listOf("mp4a", "opus", "vorbis", "ac-3", "ec-3", "flac").any { codec.contains(it) }
-        ) return Kind.AUDIO
-        return null
-    }
-
-    private fun chooseExtension(mimeType: String, codecs: String, baseUrl: String, kind: Kind): String {
-        val mime = mimeType.lowercase()
-        val pathExtension = runCatching { URI(baseUrl).path.substringAfterLast('.', "").lowercase() }.getOrDefault("")
-        if (pathExtension in setOf("mp4", "m4a", "webm", "mkv", "ts", "aac")) return pathExtension
-        return when {
-            mime.contains("webm") || codecs.contains("vp9", true) || codecs.contains("vp09", true) -> "webm"
-            kind == Kind.AUDIO -> "m4a"
-            else -> "mp4"
-        }
-    }
-
-    private fun isDirectMediaUrl(url: String): Boolean {
-        val extension = runCatching { URI(url).path.substringAfterLast('.', "").lowercase() }.getOrDefault("")
-        return extension in setOf("mp4", "m4v", "m4a", "webm", "mkv", "ts", "aac", "mp3", "ogg")
-    }
-
     private fun parseDuration(value: String?): Double? {
         if (value.isNullOrBlank()) return null
         val match = Regex("""P(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?""")
@@ -700,7 +670,7 @@ internal class DashDownloadEngine {
                 if (width != null) time.toString().padStart(width, '0') else time.toString()
             }
         }
-        return out.replace(sentinel, "$")
+        return out.replace(sentinel, "\$")
     }
 
     private fun hasNumberOrTimePlaceholder(value: String): Boolean =
