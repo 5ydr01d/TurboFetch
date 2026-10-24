@@ -36,6 +36,9 @@ internal class AdaptiveDownloadEngine(
         if (HlsDownloadEngine.isCandidate(sourceUrl)) {
             return HlsDownloadEngine().download(sourceUrl, destination, control, requestHeaders, onProgress)
         }
+        if (DashDownloadEngine.isCandidate(sourceUrl)) {
+            return DashDownloadEngine().download(sourceUrl, destination, control, requestHeaders, onProgress)
+        }
         val existingPart = File(destination.parentFile, destination.name + ".part")
         // A saved single-stream partial always goes through the proven validator-based resume path.
         if (existingPart.length() > 0L) return singleStream.download(sourceUrl, destination, control, requestHeaders, onProgress)
