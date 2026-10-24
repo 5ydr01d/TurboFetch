@@ -71,7 +71,6 @@ internal class DashDownloadEngine {
         private const val MAX_SEGMENTS = 10_000
         private const val MAX_SEGMENT_ATTEMPTS = 4
         private const val BUFFER_BYTES = 128 * 1024
-        private const val MAX_NESTED_REPEATS = 30_000
 
         fun isCandidate(url: String): Boolean = runCatching {
             URI(url).path.orEmpty().lowercase().endsWith(".mpd")
@@ -113,6 +112,13 @@ internal class DashDownloadEngine {
             fingerprintFile.writeText(fingerprint)
         }
 
+        // Only count resumable state that existed before this invocation began.
+        val resumedExistingState = workDir.walkTopDown().any { file ->
+            file.isFile && (
+                file.name.endsWith(".done") ||
+                    (file.name.endsWith(".part") && file.length() > 0L)
+                )
+        }
         var preserveWork = false
         try {
             val videoFile = video?.let {
@@ -131,7 +137,11 @@ internal class DashDownloadEngine {
             val stem = destination.name.substringBeforeLast('.', destination.name)
             val output = File(destination.parentFile, stem + ".dash-output." + extension)
             if (videoFile != null && audioFile != null) {
-                if (extension != "mp4") throw IOException("Separate WebM/MP4 tracks cannot be muxed into the same output container")
+                if (video?.extension !in setOf("mp4", "m4v") ||
+                    audio?.extension !in setOf("mp4", "m4a", "aac")
+                ) {
+                    throw IOException("Separate audio/video representations use a container or codec combination that TurboFetch cannot safely mux into MP4.")
+                }
                 MediaTrackMuxer.mux(videoFile, audioFile, output)
             } else {
                 val source = videoFile ?: audioFile ?: throw IOException("No DASH track was downloaded")
@@ -140,8 +150,8 @@ internal class DashDownloadEngine {
             }
             if (!output.isFile || output.length() <= 0L) throw IOException("DASH assembly produced an empty output file")
             workDir.deleteRecursively()
-            onProgress(ResumableHttpEngine.Progress(output.length(), output.length(), 0L, true))
-            return ResumableHttpEngine.Result(output, output.length(), true, null, null)
+            onProgress(ResumableHttpEngine.Progress(output.length(), output.length(), 0L, resumedExistingState))
+            return ResumableHttpEngine.Result(output, output.length(), resumedExistingState, null, null)
         } catch (error: ResumableHttpEngine.PausedException) {
             preserveWork = true
             throw error
@@ -166,7 +176,14 @@ internal class DashDownloadEngine {
         val stem = destination.name.substringBeforeLast('.', destination.name)
         val extension = representation.extension.ifBlank { if (representation.kind == Kind.AUDIO) "m4a" else "mp4" }
         val output = File(destination.parentFile, stem + ".dash-output." + extension)
-        return ResumableHttpEngine().download(representation.directUrl!!, output, control, headers, onProgress)
+        return try {
+            ResumableHttpEngine().download(representation.directUrl!!, output, control, headers, onProgress)
+        } catch (error: ResumableHttpEngine.CancelledException) {
+            output.delete()
+            File(output.parentFile, output.name + ".part").delete()
+            File(output.parentFile, output.name + ".part.properties").delete()
+            throw error
+        }
     }
 
     private fun fetchManifest(
@@ -216,10 +233,13 @@ internal class DashDownloadEngine {
         val factory = DocumentBuilderFactory.newInstance()
         factory.isNamespaceAware = true
         factory.isExpandEntityReferences = false
-        runCatching { factory.setXIncludeAware(false) }
+        runCatching { factory.isXIncludeAware = false }
+        runCatching { factory.setFeature(javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true) }
         runCatching { factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true) }
         runCatching { factory.setFeature("http://xml.org/sax/features/external-general-entities", false) }
         runCatching { factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false) }
+        runCatching { factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, "") }
+        runCatching { factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA, "") }
 
         val root = try {
             factory.newDocumentBuilder().parse(InputSource(StringReader(xml))).documentElement
