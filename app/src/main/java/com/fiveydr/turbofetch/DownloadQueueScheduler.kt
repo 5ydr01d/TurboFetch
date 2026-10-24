@@ -17,6 +17,8 @@ import java.io.File
 internal object DownloadQueueScheduler {
     @Synchronized
     fun add(context: Context, url: String, title: String, description: String, headers: Map<String, String> = emptyMap()) {
+        // Encrypt before modifying the queue so a keystore failure cannot persist raw credentials.
+        val encryptedHeaders = headers.takeIf { it.isNotEmpty() }?.let(DownloadHeaderVault::encrypt)
         val preferences = context.applicationContext.getSharedPreferences("turbofetch", Context.MODE_PRIVATE)
         val saved = JSONArray(preferences.getString("downloads", "[]") ?: "[]")
         val usedIds = (0 until saved.length()).mapNotNull { saved.optJSONObject(it)?.optLong("id") }.toSet()
@@ -33,10 +35,8 @@ internal object DownloadQueueScheduler {
                 .put("description", description)
                 .put("createdAt", createdAt)
                 .also { row ->
-                    if (headers.isNotEmpty()) {
-                        val headerJson = JSONObject()
-                        headers.forEach { (key, value) -> headerJson.put(key, value) }
-                        row.put("headers", headerJson)
+                    if (!encryptedHeaders.isNullOrBlank()) {
+                        row.put("headersEncrypted", encryptedHeaders)
                     }
                 }
         )
