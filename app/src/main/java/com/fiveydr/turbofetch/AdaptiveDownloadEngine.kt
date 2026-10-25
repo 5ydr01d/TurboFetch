@@ -31,6 +31,14 @@ internal class AdaptiveDownloadEngine(
         requestHeaders: Map<String, String> = emptyMap(),
         onProgress: (ResumableHttpEngine.Progress) -> Unit = {},
     ): ResumableHttpEngine.Result {
+        // HLS playlists are segmented media downloads, not ordinary file byte ranges.
+        // Route them through the VOD segment engine before inspecting a .part file.
+        if (HlsDownloadEngine.isCandidate(sourceUrl)) {
+            return HlsDownloadEngine().download(sourceUrl, destination, control, requestHeaders, onProgress)
+        }
+        if (DashDownloadEngine.isCandidate(sourceUrl)) {
+            return DashDownloadEngine().download(sourceUrl, destination, control, requestHeaders, onProgress)
+        }
         val existingPart = File(destination.parentFile, destination.name + ".part")
         // A saved single-stream partial always goes through the proven validator-based resume path.
         if (existingPart.length() > 0L) return singleStream.download(sourceUrl, destination, control, requestHeaders, onProgress)
@@ -194,6 +202,7 @@ internal class AdaptiveDownloadEngine(
         val savedLength = target.length().coerceAtMost(expectedLength)
         if (savedLength == expectedLength) return
         val requestStart = start + savedLength
+        val hostPermit = HostConnectionLimiter.acquire(sourceUrl)
         try {
             connection = DownloadRuntimeOptions.openConnection(sourceUrl).apply {
                 connectTimeout = 15_000
@@ -242,9 +251,13 @@ internal class AdaptiveDownloadEngine(
             }
             if (current != expectedLength) throw IOException("Segment incomplete: received $current bytes")
         } finally {
-            connection?.let {
-                activeConnections.remove(it)
-                it.disconnect()
+            try {
+                connection?.let {
+                    activeConnections.remove(it)
+                    it.disconnect()
+                }
+            } finally {
+                hostPermit.release()
             }
         }
     }

@@ -17,6 +17,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
+import java.io.EOFException
+import java.net.ConnectException
+import java.net.SocketException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import java.security.cert.CertPathValidatorException
+import javax.net.ssl.SSLException
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -25,6 +32,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -213,7 +221,7 @@ class CustomDownloadService : Service() {
         }
         val job = serviceScope.launch(start = CoroutineStart.LAZY) {
             try {
-                val result = engine.download(url, destination, control, requestHeaders) { progress ->
+                val onProgress: (ResumableHttpEngine.Progress) -> Unit = { progress ->
                     updateRow(id) {
                         it.put("downloadedBytes", progress.transferredBytes)
                             .put("totalBytes", progress.totalBytes ?: -1L)
@@ -223,29 +231,52 @@ class CustomDownloadService : Service() {
                     }
                     updateNotification()
                 }
+                val result = downloadWithAutomaticRetries(id, url, destination, control, requestHeaders, onProgress)
                 if (control.isCancelled()) {
                     result.file.delete()
                     throw ResumableHttpEngine.CancelledException(result.file)
                 }
-                val uri = publishToDownloads(result.file, title)
+                val completedTitle = if (HlsDownloadEngine.isCandidate(url) || DashDownloadEngine.isCandidate(url)) {
+                    val stem = title.substringBeforeLast('.', title).ifBlank { title }
+                    val extension = result.file.extension.takeIf { it.isNotBlank() } ?: "ts"
+                    "$stem.$extension"
+                } else title
+                val uri = publishToDownloads(result.file, completedTitle)
                 updateRow(id) {
                     it.put("phase", PHASE_COMPLETE)
+                        .put("title", completedTitle)
                         .put("contentUri", uri.toString())
                         .put("downloadedBytes", result.bytes)
                         .put("totalBytes", result.bytes)
                         .put("bytesPerSecond", 0)
                         .put("completedAt", System.currentTimeMillis())
+                        .put("retryCount", 0)
                         .put("reason", "")
                     // Request headers are no longer needed once the transfer is complete.
                     // This drops cookies/authorization from persisted queue metadata.
                     it.remove("headers")
                     it.remove("headersEncrypted")
+                    it.remove("resumeRequested")
                 }
                 result.file.delete()
             } catch (_: ResumableHttpEngine.PausedException) {
-                updateRow(id) { it.put("phase", PHASE_PAUSED).put("reason", "Paused · partial data saved for resume") }
+                // Resume can be tapped while the engine is unwinding a pause exception. If the
+                // control has already been cleared or the UI persisted a resume request, queue
+                // the saved partial again instead of overwriting that request with PAUSED.
+                val resumedMeanwhile = !control.isPaused() ||
+                    findRow(id)?.optBoolean("resumeRequested", false) == true
+                updateRow(id) {
+                    it.remove("resumeRequested")
+                    it.put(
+                        "phase",
+                        if (resumedMeanwhile) PHASE_WAITING else PHASE_PAUSED
+                    ).put(
+                        "reason",
+                        if (resumedMeanwhile) "Resuming from saved partial data" else "Paused · partial data saved for resume"
+                    )
+                }
             } catch (_: ResumableHttpEngine.CancelledException) {
-                updateRow(id) { it.put("phase", PHASE_CANCELLED).put("reason", "Cancelled") }
+                updateRow(id) { it.put("phase", PHASE_CANCELLED).put("reason", "Cancelled").also { row -> row.remove("resumeRequested") } }
             } catch (error: CancellationException) {
                 val paused = control.isPaused()
                 updateRow(id) {
@@ -261,6 +292,7 @@ class CustomDownloadService : Service() {
                         .put("failureType", details.category)
                         .put("failedAt", System.currentTimeMillis())
                         .put("lastError", details.technicalDetails)
+                    it.remove("resumeRequested")
                 }
             } finally {
                 jobs.remove(id)
@@ -270,6 +302,69 @@ class CustomDownloadService : Service() {
         }
         jobs[id] = job
         job.start()
+    }
+
+    private suspend fun downloadWithAutomaticRetries(
+        id: Long,
+        url: String,
+        destination: File,
+        control: ResumableHttpEngine.Control,
+        requestHeaders: Map<String, String>,
+        onProgress: (ResumableHttpEngine.Progress) -> Unit
+    ): ResumableHttpEngine.Result {
+        var retryAttempt = 0
+        val maximumRetries = prefs.getInt("auto_retry_count", 3).coerceIn(0, 10)
+        val initialDelayMs = prefs.getInt("auto_retry_delay_seconds", 5).coerceIn(1, 300) * 1000L
+        while (true) {
+            try {
+                return engine.download(url, destination, control, requestHeaders, onProgress)
+            } catch (error: ResumableHttpEngine.PausedException) {
+                throw error
+            } catch (error: ResumableHttpEngine.CancelledException) {
+                throw error
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (retryAttempt >= maximumRetries || !isTransientTransferFailure(error)) throw error
+                retryAttempt++
+                val backoffMs = (initialDelayMs * (1L shl (retryAttempt - 1).coerceAtMost(4))).coerceAtMost(300_000L)
+                updateRow(id) {
+                    it.put("phase", PHASE_DOWNLOADING)
+                        .put("retryCount", retryAttempt)
+                        .put("reason", "Temporary transfer failure · retry " + retryAttempt + " of " + maximumRetries +
+                            " in " + (backoffMs / 1000L) + "s")
+                }
+                updateNotification()
+                var remainingMs = backoffMs
+                while (remainingMs > 0L) {
+                    if (control.isCancelled()) throw ResumableHttpEngine.CancelledException(destination)
+                    if (control.isPaused()) throw ResumableHttpEngine.PausedException(destination)
+                    val slice = minOf(remainingMs, 250L)
+                    delay(slice)
+                    remainingMs -= slice
+                }
+            }
+        }
+    }
+
+    private fun isTransientTransferFailure(error: Throwable): Boolean {
+        val chain = generateSequence(error) { it.cause }.take(12).toList()
+        if (chain.any {
+                it is SSLException || it is CertPathValidatorException ||
+                    it.javaClass.name.contains("CertificateException", ignoreCase = true)
+            }
+        ) return false
+        val message = chain.mapNotNull { it.message }.joinToString(" ")
+        val status = Regex("""\bHTTP\s+(\d{3})\b""", RegexOption.IGNORE_CASE)
+            .find(message)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        if (status != null) return status == 408 || status == 425 || status == 429 || status in 500..599
+        return chain.any {
+            it is SocketTimeoutException ||
+                it is ConnectException ||
+                it is UnknownHostException ||
+                it is SocketException ||
+                it is EOFException
+        }
     }
 
     private fun pause(id: Long) {
@@ -283,10 +378,28 @@ class CustomDownloadService : Service() {
     }
 
     private fun resume(id: Long) {
+        val activeControl = controls[id]
+        val activeJob = jobs[id]
+        if (activeControl != null && activeJob?.isActive == true) {
+            activeControl.resume()
+            updateRow(id) {
+                if (it.optString("phase") == PHASE_PAUSED ||
+                    it.optString("phase") == PHASE_FAILED ||
+                    it.optString("phase") == PHASE_DOWNLOADING
+                ) {
+                    it.put("phase", PHASE_DOWNLOADING)
+                        .put("reason", "")
+                        .put("resumeRequested", true)
+                }
+            }
+            updateNotification()
+            return
+        }
         updateRow(id) {
             if (it.optString("phase") == PHASE_PAUSED || it.optString("phase") == PHASE_FAILED) {
                 it.put("phase", PHASE_WAITING).put("reason", "")
             }
+            it.remove("resumeRequested")
         }
         scheduleQueue()
     }
@@ -304,9 +417,15 @@ class CustomDownloadService : Service() {
                 File(destination + ".part").delete()
                 File(destination + ".part.properties").delete()
                 File(destination + ".segments.properties").delete()
+                File(destination + ".hls-work").deleteRecursively()
+                File(destination + ".dash-work").deleteRecursively()
                 base.parentFile?.listFiles()
-                    ?.filter { it.name.startsWith(base.name + ".segment-") }
-                    ?.forEach { it.delete() }
+                    ?.filter {
+                        it.name.startsWith(base.name + ".segment-") ||
+                            it.name.startsWith(base.nameWithoutExtension + ".hls-output.") ||
+                            it.name.startsWith(base.nameWithoutExtension + ".dash-output.")
+                    }
+                    ?.forEach { it.deleteRecursively() }
                 File(base.parentFile, base.name + ".assembling").delete()
             }
         }

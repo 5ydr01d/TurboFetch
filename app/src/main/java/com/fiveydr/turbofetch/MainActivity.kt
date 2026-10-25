@@ -21,8 +21,6 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
 import android.widget.Toast
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -51,6 +49,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -77,7 +78,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -93,9 +93,8 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
 private enum class AppTab(val label: String, val symbol: String) {
-    Home("Downloads", "↓"),
-    Downloads("Queue", "☷"),
-    Files("Files", "▤"),
+    Home("Queue", "↓"),
+    Files("Library", "▤"),
     Settings("Settings", "⚙")
 }
 
@@ -167,54 +166,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        handleBrowserDownloadIntent(intent)
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        handleBrowserDownloadIntent(intent)
-    }
-
-    private fun handleBrowserDownloadIntent(sourceIntent: Intent?) {
-        if (sourceIntent?.action != "com.fiveydr.turbofetch.action.BROWSER_DOWNLOAD") return
-        val url = sourceIntent.getStringExtra("com.fiveydr.turbofetch.extra.DOWNLOAD_URL")
-            ?.takeIf { it.startsWith("https://", true) || it.startsWith("http://", true) }
-            ?: return
-        // Consume the handoff marker so activity recreation cannot enqueue the same file twice.
-        setIntent(Intent(sourceIntent).apply {
-            // Don't retain one-time credentials in the Activity's remembered launch Intent.
-            removeExtra("com.fiveydr.turbofetch.extra.DOWNLOAD_URL")
-            removeExtra("com.fiveydr.turbofetch.extra.USER_AGENT")
-            removeExtra("com.fiveydr.turbofetch.extra.REFERER")
-            removeExtra("com.fiveydr.turbofetch.extra.COOKIE")
-            removeExtra("com.fiveydr.turbofetch.extra.CONTENT_DISPOSITION")
-            removeExtra("com.fiveydr.turbofetch.extra.MIME_TYPE")
-        })
-
-        // Browser credentials are needed for this transfer only. Never copy cookies into long-lived
-        // tool preferences, where a later unrelated download could accidentally reuse them.
-        val userAgent = sourceIntent.getStringExtra("com.fiveydr.turbofetch.extra.USER_AGENT").orEmpty()
-        val referer = sourceIntent.getStringExtra("com.fiveydr.turbofetch.extra.REFERER").orEmpty()
-        val cookie = sourceIntent.getStringExtra("com.fiveydr.turbofetch.extra.COOKIE").orEmpty()
-        val contentDisposition = sourceIntent.getStringExtra("com.fiveydr.turbofetch.extra.CONTENT_DISPOSITION").orEmpty()
-        val mimeType = sourceIntent.getStringExtra("com.fiveydr.turbofetch.extra.MIME_TYPE").orEmpty()
-        val oneTimeHeaders = buildMap {
-            userAgent.takeIf { it.isNotBlank() }?.let { put("User-Agent", it) }
-            referer.takeIf { it.isNotBlank() }?.let { put("Referer", it) }
-            cookie.takeIf { it.isNotBlank() }?.let { put("Cookie", it) }
-        }
-        val suggestedFileName = android.webkit.URLUtil.guessFileName(url, contentDisposition, mimeType)
-        window.decorView.post {
-            queueToolText(
-                url,
-                "Feather Browser download",
-                extraHeaders = oneTimeHeaders,
-                useSavedHeaders = false,
-                suggestedFileName = suggestedFileName
-            )
-        }
-    }
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun TurboFetchApp(
@@ -224,6 +177,7 @@ class MainActivity : ComponentActivity() {
         onTextScaleChange: (Float) -> Unit
     ) {
         var tab by remember { mutableStateOf(AppTab.Home) }
+        var addDialogOpen by remember { mutableStateOf(false) }
         var urlInput by remember { mutableStateOf(sharedUrlOnLaunch.orEmpty()) }
         var search by remember { mutableStateOf("") }
         var filter by remember { mutableStateOf(DownloadFilter.All) }
@@ -275,19 +229,19 @@ class MainActivity : ComponentActivity() {
                                     Text("T", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Black)
                                 }
                             }
-                            Text("TurboFetch", fontWeight = FontWeight.Bold)
+                            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) { Text("Downloads", fontWeight = FontWeight.Bold); Text("TurboFetch transfer manager", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         }
                     },
-                    actions = {
-                        androidx.compose.material3.TextButton(onClick = {
-                            startActivity(Intent(this@MainActivity, com.example.MainActivity::class.java))
-                        }) { Text("Browser") }
-                    }
                 )
+            },
+            floatingActionButton = {
+                FloatingActionButton(onClick = { addDialogOpen = true }) {
+                    Text("+", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                }
             },
             bottomBar = {
                 NavigationBar {
-                    AppTab.entries.forEach { destination ->
+                    listOf(AppTab.Home, AppTab.Files, AppTab.Settings).forEach { destination ->
                         NavigationBarItem(
                             selected = tab == destination,
                             onClick = { tab = destination },
@@ -304,26 +258,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 when (tab) {
                     AppTab.Home -> {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = urlInput,
-                                onValueChange = { urlInput = it },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true,
-                                label = { Text("Download link") },
-                                placeholder = { Text("Paste URL") },
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            Button(
-                                onClick = { enqueueDownload(urlInput, rows) { urlInput = ""; rows = loadRows() } },
-                                enabled = urlInput.isNotBlank(),
-                                shape = RoundedCornerShape(12.dp)
-                            ) { Text("↓") }
-                        }
+                        Text("Tap + to add a download, or share a link from another app.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         OutlinedTextField(
                             value = search,
                             onValueChange = { search = it },
@@ -346,11 +281,15 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(top = 1.dp, bottom = 2.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Downloads", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                            Text("${activeCount} active  ·  ${completedCount} completed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Download queue", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Text("${activeCount} active · ${waitingCount} waiting", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(selected = tab == AppTab.Home, onClick = { tab = AppTab.Home }, label = { Text("Queue (${waitingCount} waiting)") })
+                            FilterChip(selected = tab == AppTab.Files, onClick = { tab = AppTab.Files }, label = { Text("Library (${completedCount})") })
                         }
                         if (loading && rows.isEmpty()) {
                             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
@@ -358,65 +297,17 @@ class MainActivity : ComponentActivity() {
                             }
                         } else if (visibleRows.isEmpty()) {
                             EmptyState(
-                                title = if (search.isBlank()) "No downloads yet" else "No matching downloads",
-                                message = if (search.isBlank()) "Paste a link above or open the browser to find a file." else "Try another filename, URL, or status filter.",
-                                action = "Open browser",
-                                onAction = { startActivity(Intent(this@MainActivity, com.example.MainActivity::class.java)) }
+                                title = if (search.isBlank()) "Queue is empty" else "No matching queued downloads",
+                                message = if (search.isBlank()) "Add a link above. Completed files appear in Library." else "Try another filename, URL, or status filter.",
+                                action = "Open library",
+                                onAction = { tab = AppTab.Files }
                             )
                         } else {
                             LazyColumn(
                                 modifier = Modifier.weight(1f).fillMaxWidth(),
                                 verticalArrangement = Arrangement.spacedBy(5.dp)
                             ) {
-                                items(visibleRows, key = { it.id }) { row ->
-                                    DownloadCard(
-                                        row = row,
-                                        onOpen = { openDownloadedFile(row.id) },
-                                        onShare = { shareDownloadedFile(row.id) },
-                                        onRetry = { retry(row, rows) { rows = loadRows() } },
-                                        onPauseResume = { controlDownload(row) { rows = loadRows() } },
-                                        onDismiss = { dismissOrCancel(row) { rows = loadRows() } }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    AppTab.Downloads -> {
-                        SectionHeader("Download manager", "$activeCount active · $waitingCount waiting · $completedCount complete")
-                        OutlinedTextField(
-                            value = search,
-                            onValueChange = { search = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            label = { Text("Search downloads") },
-                            placeholder = { Text("Filename or source URL") }
-                        )
-                        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            DownloadFilter.entries.forEach { option ->
-                                FilterChip(
-                                    selected = filter == option,
-                                    onClick = { filter = option },
-                                    label = { Text(option.label) }
-                                )
-                            }
-                        }
-                        if (loading && rows.isEmpty()) {
-                            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                                Text("Loading download history…")
-                            }
-                        } else if (visibleRows.isEmpty()) {
-                            EmptyState(
-                                title = if (search.isBlank()) "Nothing in this view" else "No matching downloads",
-                                message = if (search.isBlank()) "Add a link from Home to start a download." else "Try another filename, URL, or status filter.",
-                                action = "Add download",
-                                onAction = { tab = AppTab.Home }
-                            )
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier.weight(1f).fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                items(visibleRows, key = { it.id }) { row ->
+                                items(visibleRows.filter { !it.isComplete }, key = { it.id }) { row ->
                                     DownloadCard(
                                         row = row,
                                         onOpen = { openDownloadedFile(row.id) },
@@ -430,7 +321,16 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     AppTab.Files -> {
-                        SectionHeader("Downloaded files", "$filesRows.size available in history")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("Download library", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                Text("${filesRows.size} completed files", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            FilterChip(selected = tab == AppTab.Home, onClick = { tab = AppTab.Home }, label = { Text("Queue") })
+                        }
                         OutlinedTextField(
                             value = search,
                             onValueChange = { search = it },
@@ -444,7 +344,7 @@ class MainActivity : ComponentActivity() {
                                 title = "No completed files yet",
                                 message = "When a download completes, it will appear here with Open and Share actions.",
                                 action = "View downloads",
-                                onAction = { tab = AppTab.Downloads }
+                                onAction = { tab = AppTab.Home }
                             )
                         } else {
                             LazyColumn(
@@ -547,6 +447,38 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        if (addDialogOpen) {
+            AlertDialog(
+                onDismissRequest = { addDialogOpen = false },
+                title = { Text("Add download") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = urlInput,
+                            onValueChange = { urlInput = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text("Direct download URL") },
+                            placeholder = { Text("https://example.com/file.zip") }
+                        )
+                        Text("HTTP and HTTPS links are supported. For video pages, use the video quality tool in Settings.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            enqueueDownload(urlInput, rows) {
+                                urlInput = ""
+                                rows = loadRows()
+                                addDialogOpen = false
+                            }
+                        },
+                        enabled = urlInput.isNotBlank()
+                    ) { Text("Add to queue") }
+                },
+                dismissButton = { TextButton(onClick = { addDialogOpen = false }) { Text("Cancel") } }
+            )
+        }
     }
 
     @Composable
@@ -556,6 +488,8 @@ class MainActivity : ComponentActivity() {
         var speedKb by remember { mutableStateOf((preferences.getLong("speed_limit_bytes_per_second", 0L) / 1024L).toString()) }
         var partsText by remember { mutableStateOf(preferences.getInt("segments_per_download", 4).toString()) }
         var concurrencyText by remember { mutableStateOf(preferences.getInt("max_concurrent_downloads", 3).toString()) }
+        var autoRetryCountText by remember { mutableStateOf(preferences.getInt("auto_retry_count", 3).toString()) }
+        var retryDelayText by remember { mutableStateOf(preferences.getInt("auto_retry_delay_seconds", 5).toString()) }
         var proxyHost by remember { mutableStateOf(preferences.getString("proxy_host", "").orEmpty()) }
         var proxyPort by remember { mutableStateOf(preferences.getInt("proxy_port", 0).takeIf { it > 0 }?.toString().orEmpty()) }
         var wifiOnly by remember { mutableStateOf(preferences.getBoolean("wifi_only", false)) }
@@ -563,270 +497,95 @@ class MainActivity : ComponentActivity() {
         var userAgent by remember { mutableStateOf(savedToolHeaders["User-Agent"].orEmpty()) }
         var referer by remember { mutableStateOf(savedToolHeaders["Referer"].orEmpty()) }
         var cookie by remember { mutableStateOf(savedToolHeaders["Cookie"].orEmpty()) }
-        var artifactPageUrl by remember { mutableStateOf("") }
-        var scannedArtifacts by remember { mutableStateOf(emptyList<MediaArtifactTools.Artifact>()) }
-        var selectedArtifactUrls by remember { mutableStateOf(setOf<String>()) }
-        var scanStatus by remember { mutableStateOf("Load a page, then scan its directly exposed media and file links.") }
         var videoSiteUrl by remember { mutableStateOf("") }
         var videoSiteTitle by remember { mutableStateOf("") }
         var videoFormats by remember { mutableStateOf(emptyList<VideoSiteExtractor.Format>()) }
         var selectedVideoFormatUrl by remember { mutableStateOf("") }
         var videoFormatStatus by remember { mutableStateOf("Paste a supported video-page URL to inspect available direct formats.") }
         var inspectingVideoFormats by remember { mutableStateOf(false) }
-        val artifactWebView = remember { WebView(this@MainActivity).apply {
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            webViewClient = WebViewClient()
-        } }
-
-        // Load the latest scan automatically when Finder opens; Feather stores a scan on every page navigation.
-        LaunchedEffect(Unit) {
-            val browserPrefs = getSharedPreferences("turbofetch_browser_artifacts", Context.MODE_PRIVATE)
-            val savedJson = browserPrefs.getString("turbofetch_artifact_scan_json", null)
-            val savedUrl = browserPrefs.getString("turbofetch_artifact_scan_url", null)
-            if (!savedJson.isNullOrBlank() && !savedUrl.isNullOrBlank()) {
-                runCatching {
-                    val root = JSONObject(savedJson)
-                    val array = root.optJSONArray("artifacts") ?: JSONArray()
-                    val found = (0 until array.length()).mapNotNull { i ->
-                        val item = array.optJSONObject(i) ?: return@mapNotNull null
-                        MediaArtifactTools.artifact(
-                            item.optString("url"),
-                            item.optString("title").ifBlank { root.optString("title") },
-                            item.optString("mimeType")
-                        )
-                    }.distinctBy { it.url }
-                    artifactPageUrl = savedUrl
-                    scannedArtifacts = found
-                    selectedArtifactUrls = found.map { it.url }.toSet()
-                    scanStatus = if (found.isEmpty()) {
-                        "Latest browser page: no direct assets exposed. Protected/blob-based media may not be discoverable."
-                    } else {
-                        "Loaded ${found.size} automatically discovered items from your latest Feather Browser page."
-                    }
-                    val host = Uri.parse(savedUrl).host.orEmpty().lowercase(Locale.ROOT)
-                    val likelyVideoPage = host.contains("youtube.") || host.contains("youtu.be") ||
-                        host.contains("vimeo.") || host.contains("dailymotion.") ||
-                        host.contains("tiktok.") || host.contains("facebook.") ||
-                        host.contains("instagram.") || found.any {
-                            it.kind == MediaArtifactTools.Kind.VIDEO || it.kind == MediaArtifactTools.Kind.STREAM
-                        }
-                    if (likelyVideoPage) {
-                        videoSiteUrl = savedUrl
-                        inspectingVideoFormats = true
-                        videoFormatStatus = "Automatically checking available video/audio qualities…"
-                        lifecycleScope.launch {
-                            runCatching {
-                                withContext(Dispatchers.IO) {
-                                    VideoSiteExtractor.inspect(this@MainActivity, savedUrl)
-                                }
-                            }.onSuccess { result ->
-                                videoSiteTitle = result.title
-                                videoFormats = result.formats
-                                selectedVideoFormatUrl = result.formats.firstOrNull()?.url.orEmpty()
-                                videoFormatStatus = if (result.formats.isEmpty()) {
-                                    "No directly queueable audio-bearing formats found. This site may need separate-track merging or may not be supported."
-                                } else {
-                                    "Automatically found ${result.formats.size} quality/audio choices for ${result.title}."
-                                }
-                            }.onFailure {
-                                videoFormatStatus = "Automatic quality inspection unavailable for this page: ${it.message ?: "unsupported site"}"
-                            }
-                            inspectingVideoFormats = false
-                        }
-                    }
-                }.onFailure {
-                    scanStatus = "Could not read the latest browser scan. Browse to a page again and reopen Finder."
-                }
-            }
-        }
-
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SectionHeader("Advanced tools", "All tools are available here — no separate screen")
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Video site quality picker", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("Uses yt-dlp to inspect supported video-hosting pages and list available direct video+audio or audio-only formats. Choose a quality, then hand its direct stream URL to TurboFetch.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    OutlinedTextField(
-                        value = videoSiteUrl,
-                        onValueChange = { videoSiteUrl = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        label = { Text("Video page URL") },
-                        placeholder = { Text("https://video.example/watch/...") }
-                    )
-                    Button(
-                        onClick = {
-                            if (!DownloadLinkTools.isHttpUrl(videoSiteUrl)) {
-                                videoFormatStatus = "Enter a valid HTTP/HTTPS video page URL."
-                            } else {
-                                inspectingVideoFormats = true
-                                videoFormats = emptyList()
-                                selectedVideoFormatUrl = ""
-                                videoFormatStatus = "Inspecting available formats…"
-                                lifecycleScope.launch {
-                                    runCatching {
-                                        withContext(Dispatchers.IO) {
-                                            VideoSiteExtractor.inspect(this@MainActivity, videoSiteUrl.trim())
+        SectionHeader("Advanced tools", "Direct downloads, queue utilities, and transfer controls")
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("Video site quality picker", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Uses yt-dlp to inspect supported video-hosting pages and list available direct video+audio or audio-only formats. Choose a quality, then hand its direct stream URL to TurboFetch.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            OutlinedTextField(
+                                value = videoSiteUrl,
+                                onValueChange = { videoSiteUrl = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                label = { Text("Video page URL") },
+                                placeholder = { Text("https://video.example/watch/...") }
+                            )
+                            Button(
+                                onClick = {
+                                    if (!DownloadLinkTools.isHttpUrl(videoSiteUrl)) {
+                                        videoFormatStatus = "Enter a valid HTTP/HTTPS video page URL."
+                                    } else {
+                                        inspectingVideoFormats = true
+                                        videoFormats = emptyList()
+                                        selectedVideoFormatUrl = ""
+                                        videoFormatStatus = "Inspecting available formats…"
+                                        lifecycleScope.launch {
+                                            runCatching {
+                                                withContext(Dispatchers.IO) {
+                                                    VideoSiteExtractor.inspect(this@MainActivity, videoSiteUrl.trim())
+                                                }
+                                            }.onSuccess { result ->
+                                                videoSiteTitle = result.title
+                                                videoFormats = result.formats
+                                                selectedVideoFormatUrl = result.formats.firstOrNull()?.url.orEmpty()
+                                                videoFormatStatus = if (result.formats.isEmpty()) {
+                                                    "No direct audio-bearing formats were exposed. This site may require separate video/audio muxing or may not be supported."
+                                                } else {
+                                                    "Found ${result.formats.size} direct format choices for ${result.title}."
+                                                }
+                                            }.onFailure {
+                                                videoFormatStatus = "Could not extract formats: ${it.message ?: "unknown error"}"
+                                            }
+                                            inspectingVideoFormats = false
                                         }
-                                    }.onSuccess { result ->
-                                        videoSiteTitle = result.title
-                                        videoFormats = result.formats
-                                        selectedVideoFormatUrl = result.formats.firstOrNull()?.url.orEmpty()
-                                        videoFormatStatus = if (result.formats.isEmpty()) {
-                                            "No direct audio-bearing formats were exposed. This site may require separate video/audio muxing or may not be supported."
+                                    }
+                                },
+                                enabled = !inspectingVideoFormats,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text(if (inspectingVideoFormats) "Inspecting…" else "Find video qualities") }
+                            Text(videoFormatStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (videoFormats.isNotEmpty()) {
+                                Text(videoSiteTitle, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                videoFormats.forEach { format ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        androidx.compose.material3.RadioButton(
+                                            selected = selectedVideoFormatUrl == format.url,
+                                            onClick = { selectedVideoFormatUrl = format.url }
+                                        )
+                                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(format.label, style = MaterialTheme.typography.bodyMedium)
+                                            Text("Format ID: ${format.id.ifBlank { "n/a" }}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                }
+                                Button(
+                                    onClick = {
+                                        val chosen = videoFormats.firstOrNull { it.url == selectedVideoFormatUrl }
+                                        if (chosen == null) {
+                                            videoFormatStatus = "Choose a format first."
                                         } else {
-                                            "Found ${result.formats.size} direct format choices for ${result.title}."
+                                            queueToolText(chosen.url, "Video site: ${videoSiteTitle} ${chosen.label}", chosen.headers)
+                                            videoFormatStatus = "Selected direct stream sent to the TurboFetch queue. Some sites issue expiring URLs; queue it promptly."
                                         }
-                                    }.onFailure {
-                                        videoFormatStatus = "Could not extract formats: ${it.message ?: "unknown error"}"
-                                    }
-                                    inspectingVideoFormats = false
-                                }
+                                    },
+                                    enabled = selectedVideoFormatUrl.isNotBlank(),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("Queue selected quality in TurboFetch") }
                             }
-                        },
-                        enabled = !inspectingVideoFormats,
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text(if (inspectingVideoFormats) "Inspecting…" else "Find video qualities") }
-                    Text(videoFormatStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (videoFormats.isNotEmpty()) {
-                        Text(videoSiteTitle, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        videoFormats.forEach { format ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                androidx.compose.material3.RadioButton(
-                                    selected = selectedVideoFormatUrl == format.url,
-                                    onClick = { selectedVideoFormatUrl = format.url }
-                                )
-                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text(format.label, style = MaterialTheme.typography.bodyMedium)
-                                    Text("Format ID: ${format.id.ifBlank { "n/a" }}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
+                            Text("Important: the picker lists direct formats that already include audio, plus audio-only formats. Separate video-only DASH streams are excluded because the current TurboFetch queue does not yet mux separate tracks. DRM/protected streams are not supported.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Button(
-                            onClick = {
-                                val chosen = videoFormats.firstOrNull { it.url == selectedVideoFormatUrl }
-                                if (chosen == null) {
-                                    videoFormatStatus = "Choose a format first."
-                                } else {
-                                    queueToolText(chosen.url, "Video site: ${videoSiteTitle} ${chosen.label}", chosen.headers)
-                                    videoFormatStatus = "Selected direct stream sent to the TurboFetch queue. Some sites issue expiring URLs; queue it promptly."
-                                }
-                            },
-                            enabled = selectedVideoFormatUrl.isNotBlank(),
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Queue selected quality in TurboFetch") }
                     }
-                    Text("Important: the picker lists direct formats that already include audio, plus audio-only formats. Separate video-only DASH streams are excluded because the current TurboFetch queue does not yet mux separate tracks. DRM/protected streams are not supported.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Website artifact finder", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("Scan a page for exposed image, video, audio, PDF, document, archive and application links. Select the files you want and send them to the TurboFetch queue.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    OutlinedTextField(
-                        value = artifactPageUrl,
-                        onValueChange = { artifactPageUrl = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        label = { Text("Website page URL") },
-                        placeholder = { Text("https://example.com/page") }
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = {
-                            if (DownloadLinkTools.isHttpUrl(artifactPageUrl)) {
-                                scannedArtifacts = emptyList()
-                                selectedArtifactUrls = emptySet()
-                                scanStatus = "Loading page…"
-                                artifactWebView.loadUrl(artifactPageUrl.trim())
-                            } else {
-                                scanStatus = "Enter a valid HTTP or HTTPS page URL."
-                            }
-                        }, modifier = Modifier.weight(1f)) { Text("Load page") }
-                        OutlinedButton(onClick = {
-                            if (artifactWebView.url.isNullOrBlank()) {
-                                scanStatus = "Load a webpage first."
-                            } else {
-                                scanStatus = "Scanning page assets…"
-                                artifactWebView.evaluateJavascript(MediaArtifactTools.PAGE_SCAN_SCRIPT) { raw ->
-                                    runCatching {
-                                        val decoded = org.json.JSONTokener(raw ?: "null").nextValue()
-                                        val jsonText = decoded as? String ?: error("No scan data returned")
-                                        val root = JSONObject(jsonText)
-                                        val array = root.optJSONArray("artifacts") ?: JSONArray()
-                                        val found = (0 until array.length()).mapNotNull { i ->
-                                            val item = array.optJSONObject(i) ?: return@mapNotNull null
-                                            MediaArtifactTools.artifact(
-                                                item.optString("url"),
-                                                item.optString("title").ifBlank { root.optString("title") },
-                                                item.optString("mimeType")
-                                            )
-                                        }.distinctBy { it.url }
-                                        scannedArtifacts = found
-                                        selectedArtifactUrls = found.map { it.url }.toSet()
-                                        scanStatus = if (found.isEmpty()) "No direct asset links found. Some streaming sites hide media behind protected or blob-based players." else "Found ${found.size} direct links. Review and select what to queue."
-                                    }.onFailure { scanStatus = "Scan failed: ${it.message ?: "unexpected page response"}" }
-                                }
-                            }
-                        }, modifier = Modifier.weight(1f)) { Text("Scan page") }
-                    }
-                    AndroidView(
-                        factory = { artifactWebView },
-                        modifier = Modifier.fillMaxWidth().height(220.dp)
-                    )
-                    Text(scanStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (scannedArtifacts.isNotEmpty()) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("${selectedArtifactUrls.size} of ${scannedArtifacts.size} selected", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
-                            OutlinedButton(onClick = {
-                                selectedArtifactUrls = if (selectedArtifactUrls.size == scannedArtifacts.size) emptySet() else scannedArtifacts.map { it.url }.toSet()
-                            }) { Text(if (selectedArtifactUrls.size == scannedArtifacts.size) "Select none" else "Select all") }
-                        }
-                        scannedArtifacts.forEach { artifact ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                androidx.compose.material3.Checkbox(
-                                    checked = artifact.url in selectedArtifactUrls,
-                                    onCheckedChange = { checked ->
-                                        selectedArtifactUrls = if (checked) selectedArtifactUrls + artifact.url else selectedArtifactUrls - artifact.url
-                                    }
-                                )
-                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text(artifact.title, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    Text(
-                                        "${artifact.kind.label} · ${artifact.qualityLabel}${if (artifact.mimeType.isNotBlank()) " · ${artifact.mimeType}" else ""}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    Text(artifact.url, style = MaterialTheme.typography.labelSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                            HorizontalDivider()
-                        }
-                        Button(
-                            onClick = {
-                                val selected = scannedArtifacts.filter { it.url in selectedArtifactUrls }
-                                if (selected.isEmpty()) {
-                                    scanStatus = "Select at least one artifact."
-                                } else {
-                                    queueToolText(selected.joinToString("\n") { it.url }, "Website artifact scan")
-                                    scanStatus = "Sent ${selected.size} selected links to the TurboFetch queue."
-                                }
-                            },
-                            enabled = selectedArtifactUrls.isNotEmpty(),
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Queue selected artifacts") }
-                    }
-                    Text("Limits: this discovers URLs exposed to the page DOM. It does not yet extract protected tube-site streams or guarantee quality options when a site hides its media URLs.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Add and batch links", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -872,6 +631,8 @@ class MainActivity : ComponentActivity() {
                     OutlinedTextField(value = speedKb, onValueChange = { speedKb = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Global speed limit (KB/s; 0 = unlimited)") })
                     OutlinedTextField(value = partsText, onValueChange = { partsText = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Parallel parts per large file (2–16)") })
                     OutlinedTextField(value = concurrencyText, onValueChange = { concurrencyText = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Simultaneous downloads (1–30)") })
+                    OutlinedTextField(value = autoRetryCountText, onValueChange = { autoRetryCountText = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Automatic retries (0–10)") })
+                    OutlinedTextField(value = retryDelayText, onValueChange = { retryDelayText = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Initial retry delay (seconds; 1–300)") })
                     OutlinedTextField(value = proxyHost, onValueChange = { proxyHost = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("HTTP proxy host (blank = direct)") })
                     OutlinedTextField(value = proxyPort, onValueChange = { proxyPort = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("HTTP proxy port (blank/0 = direct)") })
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -887,8 +648,11 @@ class MainActivity : ComponentActivity() {
                             val speed = (speedKb.toLongOrNull() ?: 0L).coerceAtLeast(0L)
                             val parts = (partsText.toIntOrNull() ?: 4).coerceIn(2, 16)
                             val concurrent = (concurrencyText.toIntOrNull() ?: 3).coerceIn(1, 30)
+                            val autoRetries = (autoRetryCountText.toIntOrNull() ?: 3).coerceIn(0, 10)
+                            val retryDelay = (retryDelayText.toIntOrNull() ?: 5).coerceIn(1, 300)
                             preferences.edit().putLong("speed_limit_bytes_per_second", speed * 1024L)
                                 .putInt("segments_per_download", parts).putInt("max_concurrent_downloads", concurrent)
+                                .putInt("auto_retry_count", autoRetries).putInt("auto_retry_delay_seconds", retryDelay)
                                 .putString("proxy_host", host).putInt("proxy_port", if (host.isBlank()) 0 else port)
                                 .putBoolean("wifi_only", wifiOnly).apply()
                             DownloadRuntimeOptions.refresh(this@MainActivity)
@@ -897,7 +661,7 @@ class MainActivity : ComponentActivity() {
                             Toast.makeText(this@MainActivity, "Transfer settings saved", Toast.LENGTH_SHORT).show()
                         }
                     }, modifier = Modifier.fillMaxWidth()) { Text("Save transfer settings") }
-                    Text("Parallel parts require server byte-range support and a stable validator. Proxy and Wi-Fi-only options affect TurboFetch downloads.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Automatic retries use exponential backoff for transient timeouts, connection failures, HTTP 408/425/429 and 5xx responses. Certificate failures and other permanent errors are not retried. Parallel parts require server byte-range support and a stable validator.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
@@ -1013,6 +777,12 @@ class MainActivity : ComponentActivity() {
         extraHeaders.forEach { (key, value) -> if (key.isNotBlank() && value.isNotBlank()) headers[key] = value }
         urls.forEach { url ->
             var title = if (urls.size == 1 && !suggestedFileName.isNullOrBlank()) sanitizeFileName(suggestedFileName) else DownloadLinkTools.fileNameFromUrl(url)
+            if (HlsDownloadEngine.isCandidate(url) && title.endsWith(".m3u8", ignoreCase = true)) {
+                title = title.dropLast(5) + ".ts"
+            }
+            if (DashDownloadEngine.isCandidate(url) && title.endsWith(".mpd", ignoreCase = true)) {
+                title = title.dropLast(4) + ".mp4"
+            }
             if (title.lowercase(Locale.ROOT) in used) {
                 val dot = title.lastIndexOf('.')
                 val stem = if (dot > 0) title.substring(0, dot) else title
@@ -1163,7 +933,14 @@ class MainActivity : ComponentActivity() {
             ?.substringAfterLast('/')
             ?.takeIf { it.isNotBlank() }
             ?: "download-${System.currentTimeMillis()}.bin"
-        return sanitizeFileName(raw)
+        val safeName = sanitizeFileName(raw)
+        return when {
+            HlsDownloadEngine.isCandidate(uri.toString()) && safeName.endsWith(".m3u8", ignoreCase = true) ->
+                safeName.dropLast(5) + ".ts"
+            DashDownloadEngine.isCandidate(uri.toString()) && safeName.endsWith(".mpd", ignoreCase = true) ->
+                safeName.dropLast(4) + ".mp4"
+            else -> safeName
+        }
     }
 
     private fun uniqueTitle(baseName: String, rows: List<DownloadRow>): String {
@@ -1219,9 +996,15 @@ class MainActivity : ComponentActivity() {
                 File(destination + ".part").delete()
                 File(destination + ".part.properties").delete()
                 File(destination + ".segments.properties").delete()
+                File(destination + ".hls-work").deleteRecursively()
+                File(destination + ".dash-work").deleteRecursively()
                 base.parentFile?.listFiles()
-                    ?.filter { it.name.startsWith(base.name + ".segment-") }
-                    ?.forEach { it.delete() }
+                    ?.filter {
+                        it.name.startsWith(base.name + ".segment-") ||
+                            it.name.startsWith(base.nameWithoutExtension + ".hls-output.") ||
+                            it.name.startsWith(base.nameWithoutExtension + ".dash-output.")
+                    }
+                    ?.forEach { it.deleteRecursively() }
                 File(base.parentFile, base.name + ".assembling").delete()
             }
             return

@@ -54,7 +54,7 @@ internal object VideoSiteExtractor {
             val ext = read(raw, "ext")?.toString().orEmpty()
             val height = number(read(raw, "height")).toInt()
                 .takeIf { it > 0 }
-                ?: MediaArtifactTools.qualityHeightFrom(read(raw, "resolution")?.toString().orEmpty())
+                ?: qualityHeightFrom(read(raw, "resolution")?.toString().orEmpty())
                 ?: 0
             val bitrate = number(read(raw, "tbr", "abr")).toInt().coerceAtLeast(0)
             val vcodec = read(raw, "vcodec")?.toString().orEmpty()
@@ -105,6 +105,13 @@ internal object VideoSiteExtractor {
             if (fieldValue != null) return fieldValue
         }
         return null
+    }
+
+    private fun qualityHeightFrom(value: String): Int? {
+        val normalized = value.trim().lowercase(Locale.ROOT)
+        val explicit = Regex("""(\\d{3,4})\\s*p""").find(normalized)?.groupValues?.get(1)?.toIntOrNull()
+        if (explicit != null) return explicit
+        return Regex("""\\d+\\s*[x×]\\s*(\\d{3,4})""").find(normalized)?.groupValues?.get(1)?.toIntOrNull()
     }
 
     private fun number(value: Any?): Double = when (value) {
