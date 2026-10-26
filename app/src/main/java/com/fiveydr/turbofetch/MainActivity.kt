@@ -258,64 +258,74 @@ class MainActivity : ComponentActivity() {
             ) {
                 when (tab) {
                     AppTab.Home -> {
-                        Text("Tap + to add a download, or share a link from another app.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        OutlinedTextField(
-                            value = search,
-                            onValueChange = { search = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            label = { Text("Search downloads") },
-                            placeholder = { Text("Filename or URL") },
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        LazyColumn(
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            DownloadFilter.entries.forEach { option ->
-                                FilterChip(
-                                    selected = filter == option,
-                                    onClick = { filter = option },
-                                    label = { Text(option.label) }
+                            item(key = "transfer-dashboard") {
+                                TransferDashboard(
+                                    rows = rows,
+                                    onPauseAll = { controlAllToolDownloads(false); rows = loadRows() },
+                                    onResumeAll = { controlAllToolDownloads(true); rows = loadRows() }
                                 )
                             }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Download queue", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                            Text("${activeCount} active · ${waitingCount} waiting", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(selected = tab == AppTab.Home, onClick = { tab = AppTab.Home }, label = { Text("Queue (${waitingCount} waiting)") })
-                            FilterChip(selected = tab == AppTab.Files, onClick = { tab = AppTab.Files }, label = { Text("Library (${completedCount})") })
-                        }
-                        if (loading && rows.isEmpty()) {
-                            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                                Text("Loading downloads…")
+                            item(key = "queue-search") {
+                                OutlinedTextField(
+                                    value = search,
+                                    onValueChange = { search = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    label = { Text("Search downloads") },
+                                    placeholder = { Text("Filename or URL") },
+                                    shape = RoundedCornerShape(12.dp)
+                                )
                             }
-                        } else if (visibleRows.isEmpty()) {
-                            EmptyState(
-                                title = if (search.isBlank()) "Queue is empty" else "No matching queued downloads",
-                                message = if (search.isBlank()) "Add a link above. Completed files appear in Library." else "Try another filename, URL, or status filter.",
-                                action = "Open library",
-                                onAction = { tab = AppTab.Files }
-                            )
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier.weight(1f).fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(5.dp)
-                            ) {
-                                items(visibleRows.filter { !it.isComplete }, key = { it.id }) { row ->
-                                    DownloadCard(
-                                        row = row,
-                                        onOpen = { openDownloadedFile(row.id) },
-                                        onShare = { shareDownloadedFile(row.id) },
-                                        onRetry = { retry(row, rows) { rows = loadRows() } },
-                                        onPauseResume = { controlDownload(row) { rows = loadRows() } },
-                                        onDismiss = { dismissOrCancel(row) { rows = loadRows() } }
-                                    )
+                            item(key = "queue-filters") {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    DownloadFilter.entries.forEach { option ->
+                                        FilterChip(
+                                            selected = filter == option,
+                                            onClick = { filter = option },
+                                            label = { Text(option.label) }
+                                        )
+                                    }
+                                }
+                            }
+                            item(key = "queue-heading") {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                    Text("Download queue", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                    Text("$activeCount active · $waitingCount waiting", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            if (loading && rows.isEmpty()) {
+                                item(key = "queue-loading") {
+                                    Box(Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) { Text("Loading downloads…") }
+                                }
+                            } else {
+                                val queueRows = visibleRows.filter { !it.isComplete }
+                                if (queueRows.isEmpty()) {
+                                    item(key = "queue-empty") {
+                                        EmptyState(
+                                            title = if (search.isBlank()) "Queue is empty" else "No matching downloads",
+                                            message = if (search.isBlank()) "Add a link with + or share a URL from another app. Completed files appear in Library." else "Try another filename, URL, or status filter.",
+                                            action = "Open library",
+                                            onAction = { tab = AppTab.Files }
+                                        )
+                                    }
+                                } else {
+                                    items(queueRows, key = { it.id }) { row ->
+                                        DownloadCard(
+                                            row = row,
+                                            onOpen = { openDownloadedFile(row.id) },
+                                            onShare = { shareDownloadedFile(row.id) },
+                                            onRetry = { retry(row, rows) { rows = loadRows() } },
+                                            onPauseResume = { controlDownload(row) { rows = loadRows() } },
+                                            onDismiss = { dismissOrCancel(row) { rows = loadRows() } }
+                                        )
+                                    }
                                 }
                             }
                         }
