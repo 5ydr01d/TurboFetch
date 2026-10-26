@@ -140,17 +140,37 @@ internal fun TransferDashboard(rows: List<DownloadRow>, onPauseAll: () -> Unit, 
 
 @Composable
 private fun DashboardMetric(label: String, value: String, caption: String, modifier: Modifier = Modifier) {
+    val metricShape = RoundedCornerShape(18.dp)
     Card(
-            modifier,
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.68f)),
-            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        modifier = modifier.clip(metricShape),
+        shape = metricShape,
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            Brush.linearGradient(
+                listOf(Color.White.copy(alpha = 0.78f), MaterialTheme.colorScheme.primary.copy(alpha = 0.16f), Color.White.copy(alpha = 0.34f))
+            )
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.80f),
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f),
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
+                        )
+                    )
+                )
         ) {
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1)
-            Text(caption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            Column(Modifier.padding(horizontal = 10.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(caption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            }
         }
     }
 }
