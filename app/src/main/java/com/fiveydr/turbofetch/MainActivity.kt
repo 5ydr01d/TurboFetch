@@ -187,10 +187,9 @@ class MainActivity : ComponentActivity() {
             var darkMode by remember { mutableStateOf(preferences.getBoolean("dark_mode", false)) }
             var textScale by remember { mutableFloatStateOf(preferences.getFloat("text_scale", 1f).coerceIn(0.9f, 1.3f)) }
             val baseDensity = LocalDensity.current
-            CompositionLocalProvider(
-                LocalDensity provides Density(baseDensity.density, baseDensity.fontScale * textScale)
+            CompositionLocalProvider(                LocalDensity provides Density(baseDensity.density, baseDensity.fontScale * textScale)
             ) {
-                MaterialTheme(colorScheme = if (darkMode) darkColorScheme() else lightColorScheme()) {
+                MaterialTheme(colorScheme = if (darkMode) darkColorScheme(primary = androidx.compose.ui.graphics.Color(0xFFE7C99B), onPrimary = androidx.compose.ui.graphics.Color(0xFF241D16), secondary = androidx.compose.ui.graphics.Color(0xFFB7A5C8), tertiary = androidx.compose.ui.graphics.Color(0xFF9ADBC7), background = androidx.compose.ui.graphics.Color(0xFF111116), surface = androidx.compose.ui.graphics.Color(0xFF19191F), surfaceVariant = androidx.compose.ui.graphics.Color(0xFF292830)) else lightColorScheme(primary = androidx.compose.ui.graphics.Color(0xFF5B465D), onPrimary = androidx.compose.ui.graphics.Color(0xFFFFFFFF), primaryContainer = androidx.compose.ui.graphics.Color(0xFFE9E0EE), onPrimaryContainer = androidx.compose.ui.graphics.Color(0xFF302438), secondary = androidx.compose.ui.graphics.Color(0xFF927D9B), tertiary = androidx.compose.ui.graphics.Color(0xFF397D70), background = androidx.compose.ui.graphics.Color(0xFFF6F2F7), surface = androidx.compose.ui.graphics.Color(0xFFF9F6FA), surfaceVariant = androidx.compose.ui.graphics.Color(0xFFECE5EF))) {
                     TurboFetchApp(
                         darkMode = darkMode,
                         textScale = textScale,
@@ -258,6 +257,7 @@ class MainActivity : ComponentActivity() {
         val filesRows = rows.filter { it.isComplete && searchMatches(it, search) }
 
         Scaffold(
+            containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.94f),
             contentWindowInsets = WindowInsets.statusBars.union(WindowInsets.navigationBars),
             topBar = {
                 TopAppBar(
@@ -283,7 +283,7 @@ class MainActivity : ComponentActivity() {
                 }
             },
             bottomBar = {
-                NavigationBar {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f), tonalElevation = 0.dp) {
                     listOf(AppTab.Home, AppTab.Files, AppTab.Settings).forEach { destination ->
                         NavigationBarItem(
                             selected = tab == destination,
@@ -386,8 +386,7 @@ class MainActivity : ComponentActivity() {
                         }
                         OutlinedTextField(
                             value = search,
-                            onValueChange = { search = it },
-                            modifier = Modifier.fillMaxWidth(),
+                            onValueChange = { search = it },                            modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             label = { Text("Find a file") },
                             placeholder = { Text("Search by filename") }
@@ -617,8 +616,7 @@ class MainActivity : ComponentActivity() {
                             Button(
                                 onClick = {
                                     if (!DownloadLinkTools.isHttpUrl(videoSiteUrl)) {
-                                        videoFormatStatus = "Enter a valid HTTP/HTTPS video page URL."
-                                    } else {
+                                        videoFormatStatus = "Enter a valid HTTP/HTTPS video page URL."                                    } else {
                                         inspectingVideoFormats = true
                                         videoFormats = emptyList()
                                         selectedVideoFormatUrl = ""
@@ -848,346 +846,3 @@ class MainActivity : ComponentActivity() {
         } else {
             // Encrypt before committing; on failure, leave the previous encrypted value intact.
             val protected = DownloadHeaderVault.encryptToolSettings(cleaned)
-            editor.putString("tool_headers_encrypted", protected).apply()
-        }
-    }
-
-    private fun queueToolText(
-        text: String,
-        description: String,
-        extraHeaders: Map<String, String> = emptyMap(),
-        useSavedHeaders: Boolean = true,
-        suggestedFileName: String? = null
-    ) {
-        val urls = DownloadLinkTools.extractUrls(text)
-        if (urls.isEmpty()) { Toast.makeText(this, "No valid HTTP/HTTPS links found", Toast.LENGTH_SHORT).show(); return }
-        val currentRows = DownloadQueueStore.snapshot(preferences)
-        val used = mutableSetOf<String>()
-        for (i in 0 until currentRows.length()) used.add(currentRows.optJSONObject(i)?.optString("title").orEmpty().lowercase(Locale.ROOT))
-        val headers = linkedMapOf<String, String>()
-        if (useSavedHeaders) {
-            val saved = loadSavedToolHeaders()
-            saved.forEach { (name, value) ->
-                if (name.isNotBlank() && value.isNotBlank()) headers[name] = value.trim()
-            }
-        }
-        extraHeaders.forEach { (key, value) -> if (key.isNotBlank() && value.isNotBlank()) headers[key] = value }
-        urls.forEach { url ->
-            var title = if (urls.size == 1 && !suggestedFileName.isNullOrBlank()) sanitizeFileName(suggestedFileName) else DownloadLinkTools.fileNameFromUrl(url)
-            if (HlsDownloadEngine.isCandidate(url) && title.endsWith(".m3u8", ignoreCase = true)) {
-                title = title.dropLast(5) + ".ts"
-            }
-            if (DashDownloadEngine.isCandidate(url) && title.endsWith(".mpd", ignoreCase = true)) {
-                title = title.dropLast(4) + ".mp4"
-            }
-            if (title.lowercase(Locale.ROOT) in used) {
-                val dot = title.lastIndexOf('.')
-                val stem = if (dot > 0) title.substring(0, dot) else title
-                val ext = if (dot > 0) title.substring(dot) else ""
-                var n = 1
-                while ("${stem} ($n)$ext".lowercase(Locale.ROOT) in used) n++
-                title = "${stem} ($n)$ext"
-            }
-            used.add(title.lowercase(Locale.ROOT))
-            try {
-                DownloadQueueScheduler.add(this, url, title, description, headers)
-            } catch (_: Exception) {
-                Toast.makeText(
-                    this,
-                    "Could not securely protect request headers; download was not queued.",
-                    Toast.LENGTH_LONG
-                ).show()
-                return
-            }
-            preferences.edit().putString("last_tool_url", url).apply()
-        }
-        CustomDownloadService.start(this)
-        Toast.makeText(this, "Added ${urls.size} link${if (urls.size == 1) "" else "s"} to the queue", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun controlAllToolDownloads(resume: Boolean) {
-        val ids = DownloadQueueStore.transaction(preferences) { saved ->
-            val selected = mutableListOf<Long>()
-            for (i in 0 until saved.length()) {
-                val item = saved.optJSONObject(i) ?: continue
-                if (!item.optBoolean("custom", false)) continue
-                val phase = item.optString("phase")
-                if (resume && (phase == CustomDownloadService.PHASE_PAUSED || phase == CustomDownloadService.PHASE_FAILED)) {
-                    item.put("phase", CustomDownloadService.PHASE_WAITING).put("reason", "")
-                    selected.add(item.optLong("id"))
-                } else if (!resume && (phase == CustomDownloadService.PHASE_DOWNLOADING || phase == CustomDownloadService.PHASE_WAITING)) {
-                    selected.add(item.optLong("id"))
-                }
-            }
-            selected
-        }
-        ids.forEach { CustomDownloadService.start(this, if (resume) CustomDownloadService.ACTION_RESUME else CustomDownloadService.ACTION_PAUSE, it) }
-        CustomDownloadService.start(this)
-        Toast.makeText(this, if (resume) "Resume/retry requested for ${ids.size} downloads" else "Pause requested for ${ids.size} downloads", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun clearToolCompletedHistory() {
-        val removed = DownloadQueueStore.transaction(preferences) { saved ->
-            var count = 0
-            for (index in saved.length() - 1 downTo 0) {
-                val item = saved.optJSONObject(index) ?: continue
-                if (item.optString("phase") == CustomDownloadService.PHASE_COMPLETE || item.optString("phase") == "complete") {
-                    saved.remove(index)
-                    count++
-                }
-            }
-            count
-        }
-        Toast.makeText(this, "Removed $removed completed history entries. Downloaded files were not deleted.", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun scheduleToolUrl(input: String) {
-        val url = input.trim()
-        if (!DownloadLinkTools.isHttpUrl(url)) { Toast.makeText(this, "Enter a valid URL in the Direct URL field first", Toast.LENGTH_SHORT).show(); return }
-        val now = Calendar.getInstance()
-        DatePickerDialog(this, { _, year, month, day ->
-            val date = Calendar.getInstance().apply { set(Calendar.YEAR, year); set(Calendar.MONTH, month); set(Calendar.DAY_OF_MONTH, day) }
-            TimePickerDialog(this, { _, hour, minute ->
-                date.set(Calendar.HOUR_OF_DAY, hour); date.set(Calendar.MINUTE, minute); date.set(Calendar.SECOND, 0); date.set(Calendar.MILLISECOND, 0)
-                runCatching { DownloadScheduleManager.schedule(this, url, DownloadLinkTools.fileNameFromUrl(url), date.timeInMillis) }
-                    .onSuccess { Toast.makeText(this, "Scheduled for ${DateFormat.getDateTimeInstance().format(date.time)}", Toast.LENGTH_LONG).show() }
-                    .onFailure { Toast.makeText(this, it.message ?: "Could not schedule download", Toast.LENGTH_SHORT).show() }
-            }, now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), true).show()
-        }, now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH)).apply { datePicker.minDate = now.timeInMillis }.show()
-    }
-
-    private fun calculateToolChecksums(uri: Uri) {
-        Toast.makeText(this, "Calculating checksums…", Toast.LENGTH_SHORT).show()
-        lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    val md5 = MessageDigest.getInstance("MD5")
-                    val sha = MessageDigest.getInstance("SHA-256")
-                    contentResolver.openInputStream(uri)?.use { input ->
-                        val buffer = ByteArray(128 * 1024)
-                        while (true) {
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            if (count == 0) continue
-                            md5.update(buffer, 0, count); sha.update(buffer, 0, count)
-                        }
-                    } ?: error("Cannot open selected file")
-                    "MD5  ${md5.digest().joinToString("") { "%02x".format(it) }}\nSHA-256  ${sha.digest().joinToString("") { "%02x".format(it) }}"
-                }
-            }
-            result.onSuccess { value ->
-                android.app.AlertDialog.Builder(this@MainActivity).setTitle("File checksums").setMessage(value)
-                    .setPositiveButton("Copy") { _, _ ->
-                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        clipboard.setPrimaryClip(ClipData.newPlainText("File checksums", value))
-                        Toast.makeText(this@MainActivity, "Checksums copied", Toast.LENGTH_SHORT).show()
-                    }.setNegativeButton("Close", null).show()
-            }.onFailure { Toast.makeText(this@MainActivity, "Checksum failed: ${it.message}", Toast.LENGTH_SHORT).show() }
-        }
-    }
-
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode != STORAGE_PERMISSION_REQUEST) return
-        val pending = pendingUrlAfterStoragePermission
-        pendingUrlAfterStoragePermission = null
-        if (grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED && !pending.isNullOrBlank()) {
-            enqueueDownload(pending, loadRows()) { }
-        } else if (pending != null) {
-            Toast.makeText(this, "Storage permission is needed to publish downloads on this Android version", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun enqueueDownload(input: String, existing: List<DownloadRow>, onSuccess: () -> Unit) {
-        val cleanUrl = input.trim()
-        val uri = runCatching { Uri.parse(cleanUrl) }.getOrNull()
-        if ((uri?.scheme != "https" && uri?.scheme != "http") || uri.host.isNullOrBlank()) {
-            Toast.makeText(this, "Enter a valid direct HTTP or HTTPS URL", Toast.LENGTH_SHORT).show()
-            return
-        }
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q &&
-            checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
-            pendingUrlAfterStoragePermission = cleanUrl
-            requestPermissions(arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE), STORAGE_PERMISSION_REQUEST)
-            return
-        }
-        try {
-            val title = uniqueTitle(fileNameFrom(uri), existing)
-            addToQueue(cleanUrl, title, "Downloading with TurboFetch")
-            pumpQueue()
-            Toast.makeText(this, "Added to TurboFetch queue", Toast.LENGTH_SHORT).show()
-            onSuccess()
-        } catch (error: Exception) {
-            Toast.makeText(this, "Could not queue download: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun fileNameFrom(uri: Uri): String {
-        val raw = uri.lastPathSegment
-            ?.let { runCatching { URLDecoder.decode(it, StandardCharsets.UTF_8.name()) }.getOrNull() }
-            ?.substringAfterLast('/')
-            ?.takeIf { it.isNotBlank() }
-            ?: "download-${System.currentTimeMillis()}.bin"
-        val safeName = sanitizeFileName(raw)
-        return when {
-            HlsDownloadEngine.isCandidate(uri.toString()) && safeName.endsWith(".m3u8", ignoreCase = true) ->
-                safeName.dropLast(5) + ".ts"
-            DashDownloadEngine.isCandidate(uri.toString()) && safeName.endsWith(".mpd", ignoreCase = true) ->
-                safeName.dropLast(4) + ".mp4"
-            else -> safeName
-        }
-    }
-
-    private fun uniqueTitle(baseName: String, rows: List<DownloadRow>): String {
-        val used = rows.map { it.title.lowercase() }.toSet()
-        if (baseName.lowercase() !in used) return baseName
-        val dot = baseName.lastIndexOf('.')
-        val stem = if (dot > 0) baseName.substring(0, dot) else baseName
-        val ext = if (dot > 0) baseName.substring(dot) else ""
-        var n = 1
-        while ("$stem ($n)$ext".lowercase() in used) n++
-        return "$stem ($n)$ext"
-    }
-
-    private fun addToQueue(url: String, title: String, description: String) {
-        DownloadQueueScheduler.add(this, url, title, description)
-    }
-
-    private fun pumpQueue() {
-        CustomDownloadService.start(this)
-    }
-
-    private fun removeId(id: Long) {
-        DownloadQueueScheduler.remove(this, id)
-    }
-
-    private fun loadRows(): List<DownloadRow> = rowLoader.loadRows()
-    private fun dismissOrCancel(row: DownloadRow, refresh: () -> Unit) {
-        if (row.isBusy) {
-            if (row.custom) {
-                CustomDownloadService.start(this, CustomDownloadService.ACTION_CANCEL, row.id)
-            } else if (row.id > 0L) {
-                downloadManager.remove(row.id)
-                removeId(row.id)
-            }
-            Toast.makeText(this, "Download cancelled", Toast.LENGTH_SHORT).show()
-        } else {
-            if (row.custom && !row.isComplete) deletePartialTransfer(row.id)
-            removeId(row.id)
-            Toast.makeText(this, "History entry dismissed; the downloaded file is not deleted", Toast.LENGTH_SHORT).show()
-        }
-        pumpQueue()
-        refresh()
-    }
-
-    private fun deletePartialTransfer(id: Long) {
-        val saved = DownloadQueueStore.snapshot(preferences)
-        for (i in 0 until saved.length()) {
-            val item = saved.optJSONObject(i) ?: continue
-            if (item.optLong("id") != id) continue
-            val destination = item.optString("destination", "")
-            if (destination.isNotBlank()) {
-                val base = File(destination)
-                File(destination + ".part").delete()
-                File(destination + ".part.properties").delete()
-                File(destination + ".segments.properties").delete()
-                File(destination + ".hls-work").deleteRecursively()
-                File(destination + ".dash-work").deleteRecursively()
-                base.parentFile?.listFiles()
-                    ?.filter {
-                        it.name.startsWith(base.name + ".segment-") ||
-                            it.name.startsWith(base.nameWithoutExtension + ".hls-output.") ||
-                            it.name.startsWith(base.nameWithoutExtension + ".dash-output.")
-                    }
-                    ?.forEach { it.deleteRecursively() }
-                File(base.parentFile, base.name + ".assembling").delete()
-            }
-            return
-        }
-    }
-
-    private fun controlDownload(row: DownloadRow, refresh: () -> Unit) {
-        if (!row.custom) return
-        val action = if (row.status == "Paused") CustomDownloadService.ACTION_RESUME else CustomDownloadService.ACTION_PAUSE
-        CustomDownloadService.start(this, action, row.id)
-        refresh()
-    }
-
-    private fun retry(row: DownloadRow, existing: List<DownloadRow>, refresh: () -> Unit) {
-        if (row.custom) {
-            DownloadQueueScheduler.requeue(this, row.id)
-            CustomDownloadService.start(this)
-            Toast.makeText(this, "Retry queued · saved partial data will be checked", Toast.LENGTH_SHORT).show()
-            refresh()
-            return
-        }
-        val uri = runCatching { Uri.parse(row.url) }.getOrNull()
-        if (uri == null || uri.host.isNullOrBlank() || (uri.scheme != "http" && uri.scheme != "https")) {
-            Toast.makeText(this, "The saved URL is not valid. Add the link again.", Toast.LENGTH_LONG).show()
-            return
-        }
-        try {
-            val title = uniqueTitle(row.title, existing)
-            addToQueue(row.url, title, "Retrying with TurboFetch")
-            pumpQueue()
-            Toast.makeText(this, "Retry added to queue", Toast.LENGTH_SHORT).show()
-            refresh()
-        } catch (error: Exception) {
-            Toast.makeText(this, "Retry could not be queued: ${error.message ?: "unknown error"}", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun uriForDownload(id: Long): Uri? {
-        val saved = DownloadQueueStore.snapshot(preferences)
-        for (i in 0 until saved.length()) {
-            val item = saved.optJSONObject(i) ?: continue
-            if (item.optLong("id") != id) continue
-            val stored = item.optString("contentUri", "")
-            if (stored.isNotBlank()) return runCatching { Uri.parse(stored) }.getOrNull()
-            break
-        }
-        return downloadManager.getUriForDownloadedFile(id)
-    }
-
-    private fun openDownloadedFile(id: Long) {
-        try {
-            val uri = uriForDownload(id)
-            if (uri == null) {
-                Toast.makeText(this, "Downloaded file could not be located", Toast.LENGTH_LONG).show()
-                return
-            }
-            val mimeType = contentResolver.getType(uri) ?: "*/*"
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, mimeType)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            startActivity(intent)
-        } catch (_: Exception) {
-            Toast.makeText(this, "No compatible app could open this file, or the file is unavailable", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun shareDownloadedFile(id: Long) {
-        try {
-            val uri = uriForDownload(id)
-            if (uri == null) {
-                Toast.makeText(this, "Downloaded file could not be located", Toast.LENGTH_LONG).show()
-                return
-            }
-            val share = Intent(Intent.ACTION_SEND).apply {
-                type = contentResolver.getType(uri) ?: "*/*"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            startActivity(Intent.createChooser(share, "Share downloaded file"))
-        } catch (_: Exception) {
-            Toast.makeText(this, "Could not share this file", Toast.LENGTH_LONG).show()
-        }
-    }
-}
-
-private fun searchMatches(row: DownloadRow, query: String): Boolean =
-    query.isBlank() || row.title.contains(query, ignoreCase = true) || row.url.contains(query, ignoreCase = true)
-
