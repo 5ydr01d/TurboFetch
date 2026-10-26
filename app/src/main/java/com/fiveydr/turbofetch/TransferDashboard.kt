@@ -23,6 +23,7 @@ private data class SpeedPoint(val time: Long, val speed: Long)
 @Composable
 internal fun TransferDashboard(rows: List<DownloadRow>, onPauseAll: () -> Unit, onResumeAll: () -> Unit) {
     val history = remember { mutableStateListOf<SpeedPoint>() }
+    val currentRows by rememberUpdatedState(rows)
     var window by remember { mutableStateOf("30s") }
     var expanded by remember { mutableStateOf(false) }
     val active = rows.filter { it.isBusy && !it.isWaiting && it.status != "Paused" }
@@ -33,9 +34,9 @@ internal fun TransferDashboard(rows: List<DownloadRow>, onPauseAll: () -> Unit, 
     val remaining = active.sumOf { (it.total - it.downloaded).coerceAtLeast(0L) }
     val eta = if (speed > 0L && remaining > 0L) remaining / speed else -1L
 
-    LaunchedEffect(rows) {
+    LaunchedEffect(Unit) {
         while (true) {
-            history.add(SpeedPoint(System.currentTimeMillis(), rows.filter { it.isBusy && !it.isWaiting && it.status != "Paused" }.sumOf { it.speed.coerceAtLeast(0L) }))
+            history.add(SpeedPoint(System.currentTimeMillis(), currentRows.filter { it.isBusy && !it.isWaiting && it.status != "Paused" }.sumOf { it.speed.coerceAtLeast(0L) }))
             val cutoff = System.currentTimeMillis() - 3600000L
             while (history.isNotEmpty() && history.first().time < cutoff) history.removeAt(0)
             while (history.size > 2400) history.removeAt(0)
