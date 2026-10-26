@@ -281,6 +281,9 @@ class MainActivity : ComponentActivity() {
             contentWindowInsets = WindowInsets.statusBars.union(WindowInsets.navigationBars),
             topBar = {
                 TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f)
+                    ),
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                             Surface(
@@ -304,7 +307,7 @@ class MainActivity : ComponentActivity() {
             },
             bottomBar = {
                 NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.70f),
                     tonalElevation = 0.dp
                 ) {
                     listOf(AppTab.Home, AppTab.Files, AppTab.Settings).forEach { destination ->
