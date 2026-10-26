@@ -105,6 +105,11 @@ private enum class DownloadFilter(val label: String) {
 class MainActivity : ComponentActivity() {
     private var pendingUrlAfterStoragePermission: String? = null
     private var sharedUrlOnLaunch: String? = null
+    private var clipboardCandidate by mutableStateOf<String?>(null)
+    private var lastClipboardPrompt: String? = null
+    private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
+        inspectClipboardForDownload()
+    }
     private val STORAGE_PERMISSION_REQUEST = 8107
     private lateinit var downloadManager: DownloadManager
     private val preferences by lazy { getSharedPreferences("turbofetch", Context.MODE_PRIVATE) }
@@ -113,6 +118,41 @@ class MainActivity : ComponentActivity() {
     private lateinit var toolExportLauncher: ActivityResultLauncher<String>
     private lateinit var toolChecksumLauncher: ActivityResultLauncher<Array<String>>
     private var pendingToolExport: String = ""
+
+    override fun onResume() {
+        super.onResume()
+        if (preferences.getBoolean("clipboard_detection_enabled", true)) {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            runCatching { clipboard.addPrimaryClipChangedListener(clipboardListener) }
+            inspectClipboardForDownload()
+        }
+    }
+
+    override fun onPause() {
+        runCatching {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.removePrimaryClipChangedListener(clipboardListener)
+        }
+        super.onPause()
+    }
+
+    private fun inspectClipboardForDownload() {
+        if (!preferences.getBoolean("clipboard_detection_enabled", true)) return
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val copiedText = runCatching {
+            if (clipboard.hasPrimaryClip()) clipboard.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString().orEmpty()
+            else ""
+        }.getOrDefault("")
+        val candidate = DownloadLinkTools.extractUrls(copiedText)
+            .firstOrNull { DownloadLinkTools.isVideoOrDocumentUrl(it) }
+        if (candidate == null) {
+            lastClipboardPrompt = null
+            return
+        }
+        if (candidate == lastClipboardPrompt || clipboardCandidate == candidate) return
+        lastClipboardPrompt = candidate
+        clipboardCandidate = candidate
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -185,6 +225,9 @@ class MainActivity : ComponentActivity() {
         var loading by remember { mutableStateOf(true) }
         var maxConcurrent by remember {
             mutableIntStateOf(preferences.getInt("max_concurrent_downloads", 3).coerceIn(1, 30))
+        }
+        var clipboardDetectionEnabled by remember {
+            mutableStateOf(preferences.getBoolean("clipboard_detection_enabled", true))
         }
 
         LaunchedEffect(Unit) {
@@ -390,6 +433,21 @@ class MainActivity : ComponentActivity() {
                                     Switch(checked = darkMode, onCheckedChange = onDarkModeChange)
                                 }
                                 HorizontalDivider()
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text("Clipboard download prompts", style = MaterialTheme.typography.titleMedium)
+                                        Text("Offer video and document links copied while TurboFetch is open, or when you return to it. Android limits clipboard access in the background.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Switch(
+                                        checked = clipboardDetectionEnabled,
+                                        onCheckedChange = { enabled ->
+                                            clipboardDetectionEnabled = enabled
+                                            preferences.edit().putBoolean("clipboard_detection_enabled", enabled).apply()
+                                            if (!enabled) clipboardCandidate = null else inspectClipboardForDownload()
+                                        }
+                                    )
+                                }
+                                HorizontalDivider()
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Text("Text size", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
@@ -456,6 +514,35 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+        if (clipboardCandidate != null) {
+            val candidate = clipboardCandidate.orEmpty()
+            AlertDialog(
+                onDismissRequest = { clipboardCandidate = null },
+                title = { Text("Download copied link?") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("This looks like a video or document link.")
+                        Text(
+                            DownloadLinkTools.fileNameFromUrl(candidate),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(candidate, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        clipboardCandidate = null
+                        enqueueDownload(candidate, loadRows()) { }
+                    }) { Text("Download") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { clipboardCandidate = null }) { Text("Not now") }
+                }
+            )
         }
         if (addDialogOpen) {
             AlertDialog(

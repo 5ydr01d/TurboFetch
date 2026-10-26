@@ -6,6 +6,13 @@ import java.net.URL
 internal object DownloadLinkTools {
     private val candidatePattern = Regex("""(?i)\bhttps?://[^\s<>"']+""")
 
+    private val videoExtensions = setOf(
+        "mp4", "m4v", "mkv", "mov", "webm", "avi", "flv", "wmv", "3gp", "ts", "m3u8", "mpd"
+    )
+    private val documentExtensions = setOf(
+        "pdf", "doc", "docx", "odt", "rtf", "txt", "csv", "xls", "xlsx", "ppt", "pptx", "epub"
+    )
+
     fun extractUrls(text: String): List<String> {
         val found = LinkedHashSet<String>()
         candidatePattern.findAll(text).forEach { match ->
@@ -19,6 +26,19 @@ internal object DownloadLinkTools {
         val uri = runCatching { URI(value.trim()) }.getOrNull() ?: return false
         return (uri.scheme.equals("http", true) || uri.scheme.equals("https", true)) &&
             !uri.host.isNullOrBlank()
+    }
+
+    /**
+     * True only for video/stream or document URLs. Archives, installers, images, audio, and
+     * generic URLs are excluded to avoid unwanted clipboard prompts.
+     */
+    fun isVideoOrDocumentUrl(value: String): Boolean {
+        if (!isHttpUrl(value)) return false
+        val uri = runCatching { URI(value.trim()) }.getOrNull() ?: return false
+        val extension = uri.path.orEmpty().substringAfterLast('/', "")
+            .substringAfterLast('.', "")
+            .lowercase()
+        return extension in videoExtensions || extension in documentExtensions
     }
 
     fun fileNameFromUrl(value: String): String {
@@ -39,7 +59,7 @@ internal object DownloadLinkTools {
             .trim('.')
             .take(180)
             .ifBlank { "download.bin" }
-        return "${downloadId}-${safe}"
+        return "$downloadId-$safe"
     }
 
     fun likelyMediaOrFile(value: String): Boolean {
