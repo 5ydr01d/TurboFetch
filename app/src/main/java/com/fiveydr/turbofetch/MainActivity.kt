@@ -80,6 +80,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Density
@@ -190,7 +191,25 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(
                 LocalDensity provides Density(baseDensity.density, baseDensity.fontScale * textScale)
             ) {
-                MaterialTheme(colorScheme = if (darkMode) darkColorScheme() else lightColorScheme()) {
+                val vogueLightScheme = lightColorScheme(
+                    primary = Color(0xFF75619F),
+                    onPrimary = Color(0xFFFFFFFF),
+                    secondary = Color(0xFF9A7957),
+                    background = Color(0xFFF6F3FA),
+                    surface = Color(0xFFFCFAFF),
+                    surfaceContainer = Color(0xFFEFEAF6),
+                    outlineVariant = Color(0xFFDDD5E8)
+                )
+                val vogueDarkScheme = darkColorScheme(
+                    primary = Color(0xFFD0B9FF),
+                    onPrimary = Color(0xFF30234A),
+                    secondary = Color(0xFFE0C29F),
+                    background = Color(0xFF15131B),
+                    surface = Color(0xFF201C28),
+                    surfaceContainer = Color(0xFF2B2535),
+                    outlineVariant = Color(0xFF51475F)
+                )
+                MaterialTheme(colorScheme = if (darkMode) vogueDarkScheme else vogueLightScheme) {
                     TurboFetchApp(
                         darkMode = darkMode,
                         textScale = textScale,
@@ -258,6 +277,7 @@ class MainActivity : ComponentActivity() {
         val filesRows = rows.filter { it.isComplete && searchMatches(it, search) }
 
         Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
             contentWindowInsets = WindowInsets.statusBars.union(WindowInsets.navigationBars),
             topBar = {
                 TopAppBar(
@@ -283,7 +303,10 @@ class MainActivity : ComponentActivity() {
                 }
             },
             bottomBar = {
-                NavigationBar {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+                    tonalElevation = 0.dp
+                ) {
                     listOf(AppTab.Home, AppTab.Files, AppTab.Settings).forEach { destination ->
                         NavigationBarItem(
                             selected = tab == destination,
