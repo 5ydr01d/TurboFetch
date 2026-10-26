@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
+  <title id="title">TurboFetch</title>
+  <desc id="desc">Modern cyan and electric-blue TurboFetch speed mark and white-and-blue wordmark.</desc>
+  <defs>
+    <linearGradient id="cyanBlue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#08C8E8"/>
+      <stop offset="1" stop-color="#087CF4"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="320" rx="24" fill="#0B1420"/>
+  <g transform="translate(48 46)">
+    <path fill="url(#cyanBlue)" d="M18 22h270l-22 37H143l-43 178-55 22 48-200H0z"/>
+    <path fill="#08C8E8" d="M142 82h88l-31 42h-40l-12 48h43l-37 56h-52l18-100z"/>
+    <path fill="url(#cyanBlue)" d="M-2 93h116l-9 21H-2zM-18 133h111l-9 21H-18z"/>
+    <path fill="#08B8F2" d="M185 166h39v32h28l-49 61-49-61h31z"/>
+  </g>
+  <text x="365" y="166" font-family="Inter,Arial,sans-serif" font-size="100" font-weight="750" font-style="italic" letter-spacing="-4" fill="#F7FAFF">Turbo<tspan fill="url(#cyanBlue)">Fetch</tspan></text>
+  <text x="374" y="226" font-family="Inter,Arial,sans-serif" font-size="25" font-weight="500" letter-spacing="5" fill="#C9D4E2">FASTER  ·  SMARTER  ·  DOWNLOADS</text>
+</svg>
