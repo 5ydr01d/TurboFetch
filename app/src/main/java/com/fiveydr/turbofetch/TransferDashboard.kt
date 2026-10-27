@@ -63,7 +63,7 @@ internal fun TransferDashboard(rows: List<DownloadRow>, onPauseAll: () -> Unit, 
                 }
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     Text(if (active.isEmpty()) "IDLE" else "● LIVE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = if (active.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF16845B))
-                    Text("Peak ${'$'}{formatBytes(history.maxOfOrNull { it.speed } ?: 0L)}/s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Peak ${formatBytes(history.maxOfOrNull { it.speed } ?: 0L)}/s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             if (expanded) {
