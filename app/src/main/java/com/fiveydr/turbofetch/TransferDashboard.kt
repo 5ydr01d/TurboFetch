@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -50,6 +51,7 @@ internal fun TransferDashboard(rows: List<DownloadRow>, onPauseAll: () -> Unit, 
     val visible = history.filter { it.time >= System.currentTimeMillis() - duration }
 
     Column(verticalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.fillMaxWidth()) {
+        val isLightTheme = MaterialTheme.colorScheme.surface.luminance() > 0.5f
         val glassShape = RoundedCornerShape(26.dp)
         Card(
             modifier = Modifier.fillMaxWidth().clip(glassShape),
@@ -68,9 +70,9 @@ internal fun TransferDashboard(rows: List<DownloadRow>, onPauseAll: () -> Unit, 
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
-                                MaterialTheme.colorScheme.surface.copy(alpha = 0.80f)
+                                MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.48f else 0.88f),
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isLightTheme) 0.22f else 0.72f),
+                                MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.38f else 0.80f)
                             )
                         )
                     )
@@ -140,6 +142,7 @@ internal fun TransferDashboard(rows: List<DownloadRow>, onPauseAll: () -> Unit, 
 
 @Composable
 private fun DashboardMetric(label: String, value: String, caption: String, modifier: Modifier = Modifier) {
+    val isLightTheme = MaterialTheme.colorScheme.surface.luminance() > 0.5f
     val metricShape = RoundedCornerShape(18.dp)
     Card(
         modifier = modifier.clip(metricShape),
@@ -148,7 +151,7 @@ private fun DashboardMetric(label: String, value: String, caption: String, modif
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
             Brush.linearGradient(
-                listOf(Color.White.copy(alpha = 0.78f), MaterialTheme.colorScheme.primary.copy(alpha = 0.16f), Color.White.copy(alpha = 0.34f))
+                listOf(Color.White.copy(alpha = if (isLightTheme) 0.48f else 0.78f), MaterialTheme.colorScheme.primary.copy(alpha = if (isLightTheme) 0.10f else 0.16f), Color.White.copy(alpha = if (isLightTheme) 0.22f else 0.34f))
             )
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -156,12 +159,13 @@ private fun DashboardMetric(label: String, value: String, caption: String, modif
         Box(
             Modifier
                 .fillMaxWidth()
+                .clip(metricShape)
                 .background(
                     Brush.verticalGradient(
                         listOf(
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.80f),
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.62f),
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
+                            MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.48f else 0.80f),
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isLightTheme) 0.18f else 0.62f),
+                            MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.34f else 0.72f)
                         )
                     )
                 )
