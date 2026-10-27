@@ -61,9 +61,9 @@ internal fun TransferDashboard(rows: List<DownloadRow>, onPauseAll: () -> Unit, 
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.48f else 0.88f),
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isLightTheme) 0.22f else 0.72f),
-                            MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.38f else 0.80f)
+                            MaterialTheme.colorScheme.surfaceContainer,
+                            MaterialTheme.colorScheme.surfaceContainer,
+                            MaterialTheme.colorScheme.surfaceContainer
                         )
                     )
                 )
@@ -80,7 +80,7 @@ internal fun TransferDashboard(rows: List<DownloadRow>, onPauseAll: () -> Unit, 
                     }
                     Surface(
                         shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
+                        color = MaterialTheme.colorScheme.surface,
                         border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.48f))
                     ) {
                         Row(Modifier.padding(horizontal = 9.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -141,7 +141,7 @@ private fun DashboardMetric(label: String, value: String, caption: String, modif
     Card(
         modifier = modifier.clip(metricShape),
         shape = metricShape,
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
             Brush.linearGradient(
@@ -157,9 +157,9 @@ private fun DashboardMetric(label: String, value: String, caption: String, modif
                 .background(
                     Brush.verticalGradient(
                         listOf(
-                            MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.48f else 0.80f),
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isLightTheme) 0.18f else 0.62f),
-                            MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.34f else 0.72f)
+                            MaterialTheme.colorScheme.surfaceContainer,
+                            MaterialTheme.colorScheme.surfaceContainer,
+                            MaterialTheme.colorScheme.surfaceContainer
                         )
                     )
                 )
