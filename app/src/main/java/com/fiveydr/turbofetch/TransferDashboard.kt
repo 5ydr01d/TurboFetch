@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.border
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -53,69 +54,62 @@ internal fun TransferDashboard(rows: List<DownloadRow>, onPauseAll: () -> Unit, 
     Column(verticalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.fillMaxWidth()) {
         val isLightTheme = MaterialTheme.colorScheme.surface.luminance() > 0.5f
         val glassShape = RoundedCornerShape(26.dp)
-        Card(
-            modifier = Modifier.fillMaxWidth().clip(glassShape),
-            shape = glassShape,
-            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-            border = androidx.compose.foundation.BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-            ),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(glassShape)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.48f else 0.88f),
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isLightTheme) 0.22f else 0.72f),
-                                MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.38f else 0.80f)
-                            )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(glassShape)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.48f else 0.88f),
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isLightTheme) 0.22f else 0.72f),
+                            MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.38f else 0.80f)
                         )
                     )
-            ) {
-                Column(Modifier.fillMaxWidth().padding(15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("TRANSFER CONTROL CENTER", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                            Text("Live download speed", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                )
+                .border(
+                    androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
+                    glassShape
+                )
+        ) {
+            Column(Modifier.fillMaxWidth().padding(15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("TRANSFER CONTROL CENTER", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        Text("Live download speed", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.48f))
+                    ) {
+                        Row(Modifier.padding(horizontal = 9.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Box(Modifier.size(7.dp).background(MaterialTheme.colorScheme.tertiary, RoundedCornerShape(50)))
+                            Text("LIVE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                         }
+                    }
+                }
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(formatBytes(speed), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface)
+                    Text("/s", modifier = Modifier.padding(start = 5.dp, bottom = 5.dp), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                    Spacer(Modifier.weight(1f))
+                    Text("Peak " + formatBytes(history.maxOfOrNull { it.speed } ?: 0L) + "/s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+                }
+                SpeedHistoryGraph(visible.map { it.speed }, Modifier.fillMaxWidth().height(68.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("30s", "5m", "1h").forEach { option ->
+                        val selected = window == option
                         Surface(
-                            shape = RoundedCornerShape(50),
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.48f))
+                            shape = RoundedCornerShape(9.dp),
+                            color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.92f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.64f),
+                            border = if (selected) null else androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)),
+                            modifier = Modifier.clickable { window = option }
                         ) {
-                            Row(Modifier.padding(horizontal = 9.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Box(Modifier.size(7.dp).background(MaterialTheme.colorScheme.tertiary, RoundedCornerShape(50)))
-                                Text("LIVE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                            }
+                            Text(option, Modifier.padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium, color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
                         }
                     }
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(formatBytes(speed), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface)
-                        Text("/s", modifier = Modifier.padding(start = 5.dp, bottom = 5.dp), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-                        Spacer(Modifier.weight(1f))
-                        Text("Peak " + formatBytes(history.maxOfOrNull { it.speed } ?: 0L) + "/s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
-                    }
-                    SpeedHistoryGraph(visible.map { it.speed }, Modifier.fillMaxWidth().height(68.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("30s", "5m", "1h").forEach { option ->
-                            val selected = window == option
-                            Surface(
-                                shape = RoundedCornerShape(9.dp),
-                                color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.92f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.64f),
-                                border = if (selected) null else androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)),
-                                modifier = Modifier.clickable { window = option }
-                            ) {
-                                Text(option, Modifier.padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium, color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
-                            }
-                        }
-                        Spacer(Modifier.weight(1f))
-                        Text("On-device samples", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                    Spacer(Modifier.weight(1f))
+                    Text("On-device samples", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
