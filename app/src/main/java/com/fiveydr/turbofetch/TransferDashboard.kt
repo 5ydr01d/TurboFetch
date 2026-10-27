@@ -93,7 +93,8 @@ internal fun TransferDashboard(rows: List<DownloadRow>, onPauseAll: () -> Unit, 
             Button(onClick = onResumeAll, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 7.dp, vertical = 6.dp)) { Text("▶ Resume / retry", maxLines = 1) }
             Surface(shape = RoundedCornerShape(9.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.size(40.dp).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(9.dp)).clickable { expanded = !expanded }) { Box(contentAlignment = Alignment.Center) { Text(if (expanded) "⌃" else "···", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) } }
         }
-        if (expanded) Text("Estimated remaining: ${'$'}{if (eta >= 0L) formatEta(eta) else "—"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val etaLabel = if (eta >= 0L) formatEta(eta) else "—"
+        if (expanded) Text("Estimated remaining: $etaLabel", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
