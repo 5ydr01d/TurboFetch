@@ -537,7 +537,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         AdvancedToolsSettingsSection()
-                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                        Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp, shadowElevation = 0.dp) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Privacy by design", style = MaterialTheme.typography.titleMedium)
                                 Text("No advertising SDKs or analytics SDKs. Download history is stored locally on this device.", style = MaterialTheme.typography.bodyMedium)
@@ -637,7 +637,7 @@ class MainActivity : ComponentActivity() {
         var inspectingVideoFormats by remember { mutableStateOf(false) }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionHeader("Advanced tools", "Direct downloads, queue utilities, and transfer controls")
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                    Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp, shadowElevation = 0.dp) {
                         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text("Video site quality picker", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text("Uses yt-dlp to inspect supported video-hosting pages and list available direct video+audio or audio-only formats. Choose a quality, then hand its direct stream URL to TurboFetch.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -718,7 +718,7 @@ class MainActivity : ComponentActivity() {
                             Text("Important: the picker lists direct formats that already include audio, plus audio-only formats. Separate video-only DASH streams are excluded because the current TurboFetch queue does not yet mux separate tracks. DRM/protected streams are not supported.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp, shadowElevation = 0.dp) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Add and batch links", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(value = directUrl, onValueChange = { directUrl = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Direct URL (HTTP/HTTPS)") })
@@ -742,7 +742,7 @@ class MainActivity : ComponentActivity() {
                     }, modifier = Modifier.fillMaxWidth()) { Text("Export download URLs") }
                 }
             }
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp, shadowElevation = 0.dp) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Queue controls", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     OutlinedButton(onClick = { controlAllToolDownloads(resume = false) }, modifier = Modifier.fillMaxWidth()) { Text("Pause all active downloads") }
@@ -750,14 +750,14 @@ class MainActivity : ComponentActivity() {
                     OutlinedButton(onClick = { clearToolCompletedHistory() }, modifier = Modifier.fillMaxWidth()) { Text("Clear completed history (files stay saved)") }
                 }
             }
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp, shadowElevation = 0.dp) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Download scheduler", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text("Schedule the URL above for a future date and time.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(onClick = { scheduleToolUrl(directUrl) }, modifier = Modifier.fillMaxWidth()) { Text("Schedule this URL…") }
                 }
             }
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp, shadowElevation = 0.dp) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Text("Transfer settings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(value = speedKb, onValueChange = { speedKb = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Global speed limit (KB/s; 0 = unlimited)") })
@@ -796,7 +796,7 @@ class MainActivity : ComponentActivity() {
                     Text("Automatic retries use exponential backoff for transient timeouts, connection failures, HTTP 408/425/429 and 5xx responses. Certificate failures and other permanent errors are not retried. Parallel parts require server byte-range support and a stable validator.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp, shadowElevation = 0.dp) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Request headers", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text("Optional headers apply to new downloads from these tools. Saved values are encrypted with Android Keystore on this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -821,7 +821,7 @@ class MainActivity : ComponentActivity() {
                     }, modifier = Modifier.fillMaxWidth()) { Text("Save request headers") }
                 }
             }
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp, shadowElevation = 0.dp) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("File integrity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Button(onClick = { toolChecksumLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Calculate MD5 and SHA-256 for a file…") }
