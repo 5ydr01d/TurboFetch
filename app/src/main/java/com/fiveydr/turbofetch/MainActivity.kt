@@ -24,6 +24,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -79,6 +80,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
@@ -284,6 +286,7 @@ class MainActivity : ComponentActivity() {
             matchesSearch && matchesFilter
         }
         val filesRows = rows.filter { it.isComplete && searchMatches(it, search) }
+        val swipeThreshold = with(LocalDensity.current) { 72.dp.toPx() }
 
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
@@ -331,7 +334,35 @@ class MainActivity : ComponentActivity() {
             }
         ) { innerPadding ->
             Column(
-                modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(innerPadding).padding(horizontal = 12.dp),
+                modifier = Modifier.fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .pointerInput(tab, swipeThreshold) {
+                        var horizontalDrag = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { horizontalDrag = 0f },
+                            onHorizontalDrag = { change, dragAmount ->
+                                horizontalDrag += dragAmount
+                                change.consume()
+                            },
+                            onDragEnd = {
+                                if (horizontalDrag <= -swipeThreshold) {
+                                    tab = when (tab) {
+                                        AppTab.Home -> AppTab.Files
+                                        AppTab.Files -> AppTab.Settings
+                                        AppTab.Settings -> AppTab.Settings
+                                    }
+                                } else if (horizontalDrag >= swipeThreshold) {
+                                    tab = when (tab) {
+                                        AppTab.Settings -> AppTab.Files
+                                        AppTab.Files -> AppTab.Home
+                                        AppTab.Home -> AppTab.Home
+                                    }
+                                }
+                            }
+                        )
+                    }
+                    .padding(innerPadding)
+                    .padding(horizontal = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 when (tab) {
