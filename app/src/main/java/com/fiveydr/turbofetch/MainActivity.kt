@@ -193,22 +193,30 @@ class MainActivity : ComponentActivity() {
                 LocalDensity provides Density(baseDensity.density, baseDensity.fontScale * textScale)
             ) {
                 val vogueLightScheme = lightColorScheme(
-                    primary = Color(0xFF75619F),
+                    primary = Color(0xFF5B45A6),
                     onPrimary = Color(0xFFFFFFFF),
-                    secondary = Color(0xFF9A7957),
-                    background = Color(0xFFF6F3FA),
-                    surface = Color(0xFFFCFAFF),
-                    surfaceContainer = Color(0xFFEFEAF6),
-                    outlineVariant = Color(0xFFDDD5E8)
+                    primaryContainer = Color(0xFFE9E2FF),
+                    onPrimaryContainer = Color(0xFF24154E),
+                    secondary = Color(0xFF4C607B),
+                    background = Color(0xFFF5F6FA),
+                    surface = Color(0xFFFFFFFF),
+                    surfaceContainer = Color(0xFFEAEDF4),
+                    surfaceContainerLow = Color(0xFFFBFCFF),
+                    outline = Color(0xFFB8BECC),
+                    outlineVariant = Color(0xFFD9DDE6)
                 )
                 val vogueDarkScheme = darkColorScheme(
-                    primary = Color(0xFFD0B9FF),
-                    onPrimary = Color(0xFF30234A),
-                    secondary = Color(0xFFE0C29F),
-                    background = Color(0xFF15131B),
-                    surface = Color(0xFF201C28),
-                    surfaceContainer = Color(0xFF2B2535),
-                    outlineVariant = Color(0xFF51475F)
+                    primary = Color(0xFFB7A0FF),
+                    onPrimary = Color(0xFF211347),
+                    primaryContainer = Color(0xFF34245E),
+                    onPrimaryContainer = Color(0xFFEDE5FF),
+                    secondary = Color(0xFF9DB7D8),
+                    background = Color(0xFF10131A),
+                    surface = Color(0xFF191E28),
+                    surfaceContainer = Color(0xFF222936),
+                    surfaceContainerLow = Color(0xFF1B212C),
+                    outline = Color(0xFF515B6B),
+                    outlineVariant = Color(0xFF353E4B)
                 )
                 MaterialTheme(colorScheme = if (darkMode) vogueDarkScheme else vogueLightScheme) {
                     TurboFetchApp(
@@ -283,7 +291,7 @@ class MainActivity : ComponentActivity() {
             topBar = {
                 TopAppBar(
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f)
+                        containerColor = MaterialTheme.colorScheme.surface
                     ),
                     title = {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -308,7 +316,7 @@ class MainActivity : ComponentActivity() {
             },
             bottomBar = {
                 NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.70f),
+                    containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 0.dp
                 ) {
                     listOf(AppTab.Home, AppTab.Files, AppTab.Settings).forEach { destination ->
@@ -323,8 +331,8 @@ class MainActivity : ComponentActivity() {
             }
         ) { innerPadding ->
             Column(
-                modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(innerPadding).padding(horizontal = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 when (tab) {
                     AppTab.Home -> {
@@ -347,7 +355,7 @@ class MainActivity : ComponentActivity() {
                                     singleLine = true,
                                     label = { Text("Search downloads") },
                                     placeholder = { Text("Filename or URL") },
-                                    shape = RoundedCornerShape(12.dp)
+                                    shape = RoundedCornerShape(10.dp)
                                 )
                             }
                             item(key = "queue-filters") {
@@ -450,7 +458,7 @@ class MainActivity : ComponentActivity() {
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                         SectionHeader("Settings", "Make TurboFetch yours")
-                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                        Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp, shadowElevation = 0.dp) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -529,7 +537,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         AdvancedToolsSettingsSection()
-                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                        Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp, shadowElevation = 0.dp) {
                             Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text("Privacy by design", style = MaterialTheme.typography.titleMedium)
                                 Text("No advertising SDKs or analytics SDKs. Download history is stored locally on this device.", style = MaterialTheme.typography.bodyMedium)
@@ -629,7 +637,7 @@ class MainActivity : ComponentActivity() {
         var inspectingVideoFormats by remember { mutableStateOf(false) }
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionHeader("Advanced tools", "Direct downloads, queue utilities, and transfer controls")
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+                    Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp, shadowElevation = 0.dp) {
                         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text("Video site quality picker", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text("Uses yt-dlp to inspect supported video-hosting pages and list available direct video+audio or audio-only formats. Choose a quality, then hand its direct stream URL to TurboFetch.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -710,7 +718,7 @@ class MainActivity : ComponentActivity() {
                             Text("Important: the picker lists direct formats that already include audio, plus audio-only formats. Separate video-only DASH streams are excluded because the current TurboFetch queue does not yet mux separate tracks. DRM/protected streams are not supported.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp, shadowElevation = 0.dp) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Add and batch links", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(value = directUrl, onValueChange = { directUrl = it }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Direct URL (HTTP/HTTPS)") })
@@ -734,7 +742,7 @@ class MainActivity : ComponentActivity() {
                     }, modifier = Modifier.fillMaxWidth()) { Text("Export download URLs") }
                 }
             }
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp, shadowElevation = 0.dp) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Queue controls", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     OutlinedButton(onClick = { controlAllToolDownloads(resume = false) }, modifier = Modifier.fillMaxWidth()) { Text("Pause all active downloads") }
@@ -742,14 +750,14 @@ class MainActivity : ComponentActivity() {
                     OutlinedButton(onClick = { clearToolCompletedHistory() }, modifier = Modifier.fillMaxWidth()) { Text("Clear completed history (files stay saved)") }
                 }
             }
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp, shadowElevation = 0.dp) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Download scheduler", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text("Schedule the URL above for a future date and time.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(onClick = { scheduleToolUrl(directUrl) }, modifier = Modifier.fillMaxWidth()) { Text("Schedule this URL…") }
                 }
             }
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp, shadowElevation = 0.dp) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                     Text("Transfer settings", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(value = speedKb, onValueChange = { speedKb = it.filter(Char::isDigit) }, modifier = Modifier.fillMaxWidth(), singleLine = true, label = { Text("Global speed limit (KB/s; 0 = unlimited)") })
@@ -788,7 +796,7 @@ class MainActivity : ComponentActivity() {
                     Text("Automatic retries use exponential backoff for transient timeouts, connection failures, HTTP 408/425/429 and 5xx responses. Certificate failures and other permanent errors are not retried. Parallel parts require server byte-range support and a stable validator.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp, shadowElevation = 0.dp) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Request headers", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text("Optional headers apply to new downloads from these tools. Saved values are encrypted with Android Keystore on this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -813,7 +821,7 @@ class MainActivity : ComponentActivity() {
                     }, modifier = Modifier.fillMaxWidth()) { Text("Save request headers") }
                 }
             }
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
+            Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp, shadowElevation = 0.dp) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("File integrity", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Button(onClick = { toolChecksumLauncher.launch(arrayOf("*/*")) }, modifier = Modifier.fillMaxWidth()) { Text("Calculate MD5 and SHA-256 for a file…") }

@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -38,7 +39,6 @@ internal fun TransferDashboard(rows: List<DownloadRow>, onPauseAll: () -> Unit, 
     val issues = rows.count { it.isProblem || it.status == "Failed" }
     val remaining = active.sumOf { (it.total - it.downloaded).coerceAtLeast(0L) }
     val eta = if (speed > 0L && remaining > 0L) remaining / speed else -1L
-
     LaunchedEffect(Unit) {
         while (true) {
             history.add(SpeedPoint(System.currentTimeMillis(), currentRows.filter { it.isBusy && !it.isWaiting && it.status != "Paused" }.sumOf { it.speed.coerceAtLeast(0L) }))
@@ -50,129 +50,79 @@ internal fun TransferDashboard(rows: List<DownloadRow>, onPauseAll: () -> Unit, 
     }
     val duration = when (window) { "5m" -> 300000L; "1h" -> 3600000L; else -> 30000L }
     val visible = history.filter { it.time >= System.currentTimeMillis() - duration }
-
-    Column(verticalArrangement = Arrangement.spacedBy(9.dp), modifier = Modifier.fillMaxWidth()) {
-        val isLightTheme = MaterialTheme.colorScheme.surface.luminance() > 0.5f
-        val glassShape = RoundedCornerShape(26.dp)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(glassShape)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.48f else 0.88f),
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isLightTheme) 0.22f else 0.72f),
-                            MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.38f else 0.80f)
-                        )
-                    )
-                )
-                .border(
-                    androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)),
-                    glassShape
-                )
-        ) {
-            Column(Modifier.fillMaxWidth().padding(15.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("TRANSFER CONTROL CENTER", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                        Text("Live download speed", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.48f))
-                    ) {
-                        Row(Modifier.padding(horizontal = 9.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                            Box(Modifier.size(7.dp).background(MaterialTheme.colorScheme.tertiary, RoundedCornerShape(50)))
-                            Text("LIVE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        }
+    val shape = RoundedCornerShape(12.dp)
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().clip(shape).background(MaterialTheme.colorScheme.surfaceContainer, shape).border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape).padding(horizontal = 11.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).widthIn(min = 0.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    Text("TRANSFER MONITOR", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
+                    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(formatBytes(speed), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, maxLines = 1, softWrap = false)
+                        Text("/s", style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(bottom = 3.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, softWrap = false)
                     }
                 }
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(formatBytes(speed), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.onSurface)
-                    Text("/s", modifier = Modifier.padding(start = 5.dp, bottom = 5.dp), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-                    Spacer(Modifier.weight(1f))
-                    Text("Peak " + formatBytes(history.maxOfOrNull { it.speed } ?: 0L) + "/s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text(if (active.isEmpty()) "IDLE" else "● LIVE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = if (active.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else Color(0xFF16845B))
+                    Text("Peak ${formatBytes(history.maxOfOrNull { it.speed } ?: 0L)}/s", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                SpeedHistoryGraph(visible.map { it.speed }, Modifier.fillMaxWidth().height(68.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            }
+            if (expanded) {
+                SpeedHistoryGraph(visible.map { it.speed }, Modifier.fillMaxWidth().height(34.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     listOf("30s", "5m", "1h").forEach { option ->
                         val selected = window == option
-                        Surface(
-                            shape = RoundedCornerShape(9.dp),
-                            color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.92f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.64f),
-                            border = if (selected) null else androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.06f)),
-                            modifier = Modifier.clickable { window = option }
-                        ) {
-                            Text(option, Modifier.padding(horizontal = 12.dp, vertical = 6.dp), style = MaterialTheme.typography.labelMedium, color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
+                        Surface(shape = RoundedCornerShape(6.dp), color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface, contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface, modifier = Modifier.clickable { window = option }) {
+                            Text(option, Modifier.padding(horizontal = 8.dp, vertical = 3.dp), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
                         }
                     }
                     Spacer(Modifier.weight(1f))
-                    Text("On-device samples", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Local samples", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            DashboardMetric("ACTIVE", active.size.toString(), "transfers", Modifier.weight(1f))
-            DashboardMetric("QUEUED", waiting.toString(), "waiting", Modifier.weight(1f))
-            DashboardMetric("DONE", complete.toString(), "files", Modifier.weight(1f))
-        }
-        if (expanded) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                DashboardMetric("EST. REMAINING", if (eta >= 0L) formatEta(eta) else "—", "active files", Modifier.weight(1f))
-                DashboardMetric("ISSUES", issues.toString(), "need attention", Modifier.weight(1f))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                CompactMetric("ACTIVE", active.size.toString())
+                MetricDivider()
+                CompactMetric("QUEUED", waiting.toString())
+                MetricDivider()
+                CompactMetric("DONE", complete.toString())
+                MetricDivider()
+                CompactMetric("ISSUES", issues.toString())
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = onPauseAll, modifier = Modifier.weight(1f)) { Text("Ⅱ Pause all") }
-            Button(onClick = onResumeAll, modifier = Modifier.weight(1f)) { Text("▶ Resume / retry") }
-            Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.size(46.dp).clickable { expanded = !expanded }) {
-                Box(contentAlignment = Alignment.Center) { Text(if (expanded) "⌃" else "···", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) }
-            }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(onClick = onPauseAll, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 7.dp, vertical = 6.dp)) { Text("Ⅱ Pause all", maxLines = 1) }
+            Button(onClick = onResumeAll, modifier = Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 7.dp, vertical = 6.dp)) { Text("▶ Resume / retry", maxLines = 1) }
+            Surface(shape = RoundedCornerShape(9.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.size(40.dp).border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(9.dp)).clickable { expanded = !expanded }) { Box(contentAlignment = Alignment.Center) { Text(if (expanded) "⌃" else "···", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) } }
         }
+        val etaLabel = if (eta >= 0L) formatEta(eta) else "—"
+        if (expanded) Text("Estimated remaining: $etaLabel", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
-private fun DashboardMetric(label: String, value: String, caption: String, modifier: Modifier = Modifier) {
-    val isLightTheme = MaterialTheme.colorScheme.surface.luminance() > 0.5f
-    val metricShape = RoundedCornerShape(18.dp)
-    Card(
-        modifier = modifier.clip(metricShape),
-        shape = metricShape,
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            Brush.linearGradient(
-                listOf(Color.White.copy(alpha = if (isLightTheme) 0.48f else 0.78f), MaterialTheme.colorScheme.primary.copy(alpha = if (isLightTheme) 0.10f else 0.16f), Color.White.copy(alpha = if (isLightTheme) 0.22f else 0.34f))
-            )
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .clip(metricShape)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.48f else 0.80f),
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isLightTheme) 0.18f else 0.62f),
-                            MaterialTheme.colorScheme.surface.copy(alpha = if (isLightTheme) 0.34f else 0.72f)
-                        )
-                    )
-                )
-        ) {
-            Column(Modifier.padding(horizontal = 10.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1)
-                Text(caption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            }
-        }
+private fun CompactMetric(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(0.dp)) {
+        Text(value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
+@Composable
+private fun MetricDivider() { Box(Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.outlineVariant)) }
+@Composable
+private fun DashboardMetric(label: String, value: String, caption: String, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier = modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceContainer, shape)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+            .padding(horizontal = 9.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(1.dp)
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(caption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+    }
+}
 @Composable
 private fun SpeedHistoryGraph(points: List<Long>, modifier: Modifier = Modifier) {
     val lineColor = MaterialTheme.colorScheme.tertiary
