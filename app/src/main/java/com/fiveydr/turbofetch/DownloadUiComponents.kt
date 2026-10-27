@@ -230,7 +230,6 @@ internal fun DownloadCard(
                 }
             }
         }
-    }
 }
 
 @Composable
