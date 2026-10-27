@@ -136,43 +136,18 @@ internal fun TransferDashboard(rows: List<DownloadRow>, onPauseAll: () -> Unit, 
 
 @Composable
 private fun DashboardMetric(label: String, value: String, caption: String, modifier: Modifier = Modifier) {
-    val isLightTheme = MaterialTheme.colorScheme.surface.luminance() > 0.5f
-    val metricShape = RoundedCornerShape(18.dp)
-    Card(
-        modifier = modifier.clip(metricShape),
-        shape = metricShape,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            Brush.linearGradient(
-                listOf(Color.White.copy(alpha = if (isLightTheme) 0.48f else 0.78f), MaterialTheme.colorScheme.primary.copy(alpha = if (isLightTheme) 0.10f else 0.16f), Color.White.copy(alpha = if (isLightTheme) 0.22f else 0.34f))
-            )
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    val shape = RoundedCornerShape(12.dp)
+    Column(
+        modifier = modifier.clip(shape).background(MaterialTheme.colorScheme.surfaceContainer, shape)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+            .padding(horizontal = 9.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(1.dp)
     ) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .clip(metricShape)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.surfaceContainer,
-                            MaterialTheme.colorScheme.surfaceContainer,
-                            MaterialTheme.colorScheme.surfaceContainer
-                        )
-                    )
-                )
-        ) {
-            Column(Modifier.padding(horizontal = 10.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1)
-                Text(caption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            }
-        }
+        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+        Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(caption, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
     }
 }
-
 @Composable
 private fun SpeedHistoryGraph(points: List<Long>, modifier: Modifier = Modifier) {
     val lineColor = MaterialTheme.colorScheme.tertiary
