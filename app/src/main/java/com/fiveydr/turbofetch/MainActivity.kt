@@ -25,6 +25,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PageSize
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -83,6 +84,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -344,15 +346,19 @@ class MainActivity : ComponentActivity() {
         ) { innerPadding ->
             HorizontalPager(
                 state = pagerState,
+                pageSize = PageSize.Fill,
                 modifier = Modifier.fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
                     .padding(innerPadding)
-                    .padding(horizontal = 12.dp),
+                    .padding(horizontal = 12.dp)
+                    .clipToBounds()
+                    .background(MaterialTheme.colorScheme.background),
                 pageSpacing = 0.dp,
                 userScrollEnabled = true
             ) { page ->
                 Column(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize()
+                        .clipToBounds()
+                        .background(MaterialTheme.colorScheme.background),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                 when (AppTab.entries[page]) {
