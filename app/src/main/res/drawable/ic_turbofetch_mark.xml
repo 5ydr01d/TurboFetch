@@ -4,17 +4,20 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- TurboFetch angular TF/speed mark. Keep within the adaptive-icon safe zone. -->
+    <!-- Faceted, folded TF symbol based on the approved dark-premium reference. -->
+    <path
+        android:fillColor="#087CF4"
+        android:pathData="M31,25 L53,37 L53,54 L31,42 Z" />
+    <path
+        android:fillColor="#078FF8"
+        android:pathData="M53,37 L78,21 L78,38 L53,54 Z" />
     <path
         android:fillColor="#08B8F2"
-        android:pathData="M25,24 L82,24 L75,36 L48,36 L39,82 L27,88 L35,36 L18,36 Z" />
+        android:pathData="M53,37 L70,27 L70,61 L53,72 Z" />
     <path
-        android:fillColor="#08C8E8"
-        android:pathData="M47,46 L66,46 L59,57 L50,57 L47,69 L57,69 L49,82 L39,82 L43,60 Z" />
+        android:fillColor="#087CF4"
+        android:pathData="M53,54 L70,45 L70,61 L53,72 Z" />
     <path
-        android:fillColor="#00C8F0"
-        android:pathData="M8,43 L32,43 L30,48 L8,48 Z M5,53 L28,53 L26,58 L5,58 Z" />
-    <path
-        android:fillColor="#08B8F2"
-        android:pathData="M55,64 L66,64 L66,73 L74,73 L61,91 L48,73 L55,73 Z" />
+        android:fillColor="#079CF8"
+        android:pathData="M53,72 L53,90 L39,82 L39,65 Z" />
 </vector>
