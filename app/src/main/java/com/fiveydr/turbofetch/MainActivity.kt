@@ -24,6 +24,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -88,6 +90,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -284,6 +287,15 @@ class MainActivity : ComponentActivity() {
             matchesSearch && matchesFilter
         }
         val filesRows = rows.filter { it.isComplete && searchMatches(it, search) }
+        val pagerState = rememberPagerState(pageCount = { AppTab.entries.size })
+        LaunchedEffect(pagerState.settledPage) {
+            tab = AppTab.entries[pagerState.settledPage]
+        }
+        LaunchedEffect(tab) {
+            if (pagerState.settledPage != tab.ordinal) {
+                pagerState.animateScrollToPage(tab.ordinal)
+            }
+        }
 
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
@@ -321,7 +333,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     listOf(AppTab.Home, AppTab.Files, AppTab.Settings).forEach { destination ->
                         NavigationBarItem(
-                            selected = tab == destination,
+                            selected = pagerState.currentPage == destination.ordinal,
                             onClick = { tab = destination },
                             icon = { Text(destination.symbol, style = MaterialTheme.typography.titleLarge) },
                             label = { Text(destination.label) }
@@ -330,11 +342,20 @@ class MainActivity : ComponentActivity() {
                 }
             }
         ) { innerPadding ->
-            Column(
-                modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(innerPadding).padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                when (tab) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(innerPadding)
+                    .padding(horizontal = 12.dp),
+                pageSpacing = 0.dp,
+                userScrollEnabled = true
+            ) { page ->
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                when (AppTab.entries[page]) {
                     AppTab.Home -> {
                         LazyColumn(
                             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -547,6 +568,7 @@ class MainActivity : ComponentActivity() {
                         Spacer(Modifier.height(8.dp))
                         }
                     }
+                }
                 }
             }
         }
