@@ -24,7 +24,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -78,9 +79,9 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
@@ -90,6 +91,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -286,7 +288,17 @@ class MainActivity : ComponentActivity() {
             matchesSearch && matchesFilter
         }
         val filesRows = rows.filter { it.isComplete && searchMatches(it, search) }
-        val swipeThreshold = with(LocalDensity.current) { 72.dp.toPx() }
+        val pagerState = rememberPagerState(pageCount = { AppTab.entries.size })
+        val pagerScope = rememberCoroutineScope()
+
+        LaunchedEffect(pagerState.settledPage) {
+            tab = AppTab.entries[pagerState.settledPage]
+        }
+        LaunchedEffect(tab) {
+            if (pagerState.settledPage != tab.ordinal) {
+                pagerState.animateScrollToPage(tab.ordinal)
+            }
+        }
 
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
@@ -324,8 +336,11 @@ class MainActivity : ComponentActivity() {
                 ) {
                     listOf(AppTab.Home, AppTab.Files, AppTab.Settings).forEach { destination ->
                         NavigationBarItem(
-                            selected = tab == destination,
-                            onClick = { tab = destination },
+                            selected = pagerState.currentPage == destination.ordinal,
+                            onClick = {
+                                tab = destination
+                                pagerScope.launch { pagerState.animateScrollToPage(destination.ordinal) }
+                            },
                             icon = { Text(destination.symbol, style = MaterialTheme.typography.titleLarge) },
                             label = { Text(destination.label) }
                         )
@@ -333,39 +348,20 @@ class MainActivity : ComponentActivity() {
                 }
             }
         ) { innerPadding ->
-            Column(
+            HorizontalPager(
+                state = pagerState,
                 modifier = Modifier.fillMaxSize()
                     .background(MaterialTheme.colorScheme.background)
-                    .pointerInput(tab, swipeThreshold) {
-                        var horizontalDrag = 0f
-                        detectHorizontalDragGestures(
-                            onDragStart = { horizontalDrag = 0f },
-                            onHorizontalDrag = { change, dragAmount ->
-                                horizontalDrag += dragAmount
-                                change.consume()
-                            },
-                            onDragEnd = {
-                                if (horizontalDrag <= -swipeThreshold) {
-                                    tab = when (tab) {
-                                        AppTab.Home -> AppTab.Files
-                                        AppTab.Files -> AppTab.Settings
-                                        AppTab.Settings -> AppTab.Settings
-                                    }
-                                } else if (horizontalDrag >= swipeThreshold) {
-                                    tab = when (tab) {
-                                        AppTab.Settings -> AppTab.Files
-                                        AppTab.Files -> AppTab.Home
-                                        AppTab.Home -> AppTab.Home
-                                    }
-                                }
-                            }
-                        )
-                    }
                     .padding(innerPadding)
                     .padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                when (tab) {
+                pageSpacing = 0.dp,
+                userScrollEnabled = true
+            ) { page ->
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                when (AppTab.entries[page]) {
                     AppTab.Home -> {
                         LazyColumn(
                             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -578,6 +574,7 @@ class MainActivity : ComponentActivity() {
                         Spacer(Modifier.height(8.dp))
                         }
                     }
+                }
                 }
             }
         }
