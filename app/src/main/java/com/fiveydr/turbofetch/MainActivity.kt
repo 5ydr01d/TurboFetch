@@ -79,7 +79,6 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -289,8 +288,6 @@ class MainActivity : ComponentActivity() {
         }
         val filesRows = rows.filter { it.isComplete && searchMatches(it, search) }
         val pagerState = rememberPagerState(pageCount = { AppTab.entries.size })
-        val pagerScope = rememberCoroutineScope()
-
         LaunchedEffect(pagerState.settledPage) {
             tab = AppTab.entries[pagerState.settledPage]
         }
@@ -337,10 +334,7 @@ class MainActivity : ComponentActivity() {
                     listOf(AppTab.Home, AppTab.Files, AppTab.Settings).forEach { destination ->
                         NavigationBarItem(
                             selected = pagerState.currentPage == destination.ordinal,
-                            onClick = {
-                                tab = destination
-                                pagerScope.launch { pagerState.animateScrollToPage(destination.ordinal) }
-                            },
+                            onClick = { tab = destination },
                             icon = { Text(destination.symbol, style = MaterialTheme.typography.titleLarge) },
                             label = { Text(destination.label) }
                         )
